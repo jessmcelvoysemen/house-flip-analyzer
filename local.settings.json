@@ -1,0 +1,12 @@
+  {
+    "IsEncrypted": false,
+    "Values": {
+      "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+      "FUNCTIONS_WORKER_RUNTIME": "python",
+      "RAPIDAPI_KEY": "c44b111aacmshb7f1dddc19f4fb9p12056ajsn613d46763584",
+      "RAPIDAPI_HOST": "realty-in-us.p.rapidapi.com",
+      "REALTOR_LIST_URL": "https://realty-in-us.p.rapidapi.com/properties/v3/list"
+    },
+    "Host": { "CORS": "*", "CORSCredentials": false }
+  }
+  
