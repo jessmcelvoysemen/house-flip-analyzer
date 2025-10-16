@@ -1,0 +1,54 @@
+# --- OS / Editor junk ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace
+
+# --- Python build/cache ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.eggs/
+build/
+dist/
+*.egg-info/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --- Local env files ---
+.env
+.env.*
+# Azure Functions local secrets (never commit!)
+local.settings.json
+
+# --- Azure Functions / tooling noise ---
+bin/
+obj/
+.azure_functions/
+func_extensions/
+extensions.csproj
+# If you accidentally generated these:
+*.user
+
+# --- Node/npm (if you ever add a small frontend build) ---
+node_modules/
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+
+# --- Logs ---
+*.log
+logs/
