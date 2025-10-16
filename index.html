@@ -18,8 +18,13 @@
       --shadow: 0 8px 30px rgba(0,0,0,.12);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
-      color: var(--text); background: linear-gradient(180deg, var(--bg1), var(--bg2)) fixed; min-height: 100vh; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
+      color: var(--text);
+      background: linear-gradient(180deg, var(--bg1), var(--bg2)) fixed;
+      min-height: 100vh;
+    }
     .container { max-width: 1060px; margin: 32px auto; padding: 0 16px; }
 
     .header { background: #fff; border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 12px; }
@@ -31,8 +36,10 @@
     .explain .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
     .tile { background: #fff; border-radius: 10px; padding: 10px; border: 1px solid #fde68a; }
 
-    .controls { margin-top: 18px; background:#fff; border-radius:16px; padding:16px; box-shadow: var(--shadow);
-      display:grid; grid-template-columns: repeat(12, 1fr); gap: 12px; align-items:end; }
+    .controls {
+      margin-top: 18px; background:#fff; border-radius:16px; padding:16px; box-shadow: var(--shadow);
+      display:grid; grid-template-columns: repeat(12, 1fr); gap: 12px; align-items:end;
+    }
     .form-group { grid-column: span 3; }
     .form-group.rehab { grid-column: span 3; }
     .form-label { display:block; font-size: 12px; color: #334155; margin-bottom: 6px; }
@@ -87,6 +94,14 @@
     .error { background:#fff1f2; border:1px solid #fecdd3; color:#7f1d1d; border-radius:12px; padding:14px; }
     .empty { background:#ffffff; border-radius:12px; padding:16px; text-align:center; }
 
+    .listings { display:grid; grid-template-columns: 1fr; gap:8px; }
+    .listing { border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; gap:10px; align-items:center; }
+    .listing img { width:64px; height:48px; object-fit:cover; border-radius:8px; background:#f1f5f9; }
+    .listing a { text-decoration:none; color:#2563eb; }
+
+    @keyframes shimmer { 0% { opacity:.6 } 50% { opacity:1 } 100% { opacity:.6 } }
+    .ghost { animation: shimmer 1.4s infinite; background:#f3f4f6; height:14px; border-radius:6px; }
+
     @media (max-width: 900px) {
       .summary { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .results { grid-template-columns: 1fr; }
@@ -107,7 +122,7 @@
     </div>
 
     <div class="explain">
-      <h3>🧮 How Areas Are Scored (0–100 points)</h3>
+      <h3>🟡 How Areas Are Scored (0–100 points)</h3>
       <div class="grid">
         <div class="tile"><strong>Buy-Sell Gap (40%)</strong><br/>Best when median value is ~1.3–1.4× your max purchase price.</div>
         <div class="tile"><strong>Vacancy Rate (25%)</strong><br/>8–15% suggests healthy inventory without distress.</div>
@@ -146,7 +161,9 @@
 
   <script>
     const API_URL = '/api/analyze';
+    const LIST_URL = '/api/listings';
     function b01(v){ return v ? '1' : '0'; }
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     async function analyzeNeighborhoods() {
       const resultsDiv = document.getElementById('results');
@@ -155,8 +172,8 @@
       const minPrice = Number(document.getElementById('minPrice').value || 200000);
       const maxPrice = Number(document.getElementById('maxPrice').value || 225000);
       const rehabBudget = Number(document.getElementById('rehabBudget').value || 40000);
-      const includeMarketData = !!document.getElementById('includeMarketData')?.checked;
-      const groupNeighborhoods = document.getElementById('groupNeighborhoods')?.checked ?? true;
+      const includeMarketData = !!(document.getElementById('includeMarketData') && document.getElementById('includeMarketData').checked);
+      const groupNeighborhoods = (document.getElementById('groupNeighborhoods') && document.getElementById('groupNeighborhoods').checked) ? 1 : 0;
 
       analyzeBtn.disabled = true;
       resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing neighborhoods…</p></div>';
@@ -169,37 +186,35 @@
           price_max: String(maxPrice),
           rehab_budget: String(rehabBudget),
           marketdata: b01(includeMarketData),
-          groupneighborhood: b01(groupNeighborhoods)
+          groupneighborhood: String(groupNeighborhoods)
         });
-        const url = `${API_URL}?${params.toString()}`;
-        console.debug('[flip-analyzer] GET', url);
+        const url = API_URL + '?' + params.toString();
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 60000);
+        const timer = setTimeout(function(){ controller.abort(); }, 60000);
         const res = await fetch(url, { method: 'GET', signal: controller.signal });
         clearTimeout(timer);
 
         const raw = await res.text();
-        let data; try { data = JSON.parse(raw); } catch { /* keep raw */ }
+        let data; try { data = JSON.parse(raw); } catch (e) { data = null; }
 
         if (!res.ok) {
-          const msg = (data && (data.error || data.message)) || raw || `HTTP ${res.status}`;
+          const msg = (data && (data.error || data.message)) || raw || ('HTTP ' + res.status);
           throw new Error(msg);
         }
         if (data && data.status === 'error') {
           throw new Error(data.message || 'API returned an error.');
         }
 
-        // 👉 Add a small, deliberate pause so users see the "working" state.
-        await new Promise(r => setTimeout(r, 600));
-        displayResults(data, rehabBudget);
+        await sleep(600); // “thinking” moment
+        displayResults(data, rehabBudget, maxPrice);
       } catch (err) {
         console.error(err);
-        resultsDiv.innerHTML = `<div class="error">
-          <h3>⚠️ Error Loading Data</h3>
-          <p><strong>Error:</strong> ${err.message || err}</p>
-          <p style="margin-top:8px; font-size:12px; color:#475569;">If this persists, check App Insights and verify parameter names.</p>
-        </div>`;
+        resultsDiv.innerHTML = '<div class="error">'
+          + '<h3>⚠️ Error Loading Data</h3>'
+          + '<p><strong>Error:</strong> ' + (err.message || err) + '</p>'
+          + '<p style="margin-top:8px; font-size:12px; color:#475569;">If this persists, check App Insights and verify parameter names.</p>'
+          + '</div>';
       } finally {
         analyzeBtn.disabled = false;
       }
@@ -220,113 +235,193 @@
       return 'Poor';
     }
     function fmtMoney(x){ return (x || x===0) ? ('$'+Number(x).toLocaleString()) : 'N/A'; }
-    function fmtPct(x){ return (x!=null) ? (Number(x).toFixed(1)+'%') : 'N/A'; }
-    function fmtInt(x){ return x ? Number(x).toLocaleString() : 'N/A'; }
 
     function getGapChip(r){
       if(!r) return '';
-      let cls='chip-gap', label='';
+      var cls='chip-gap', label='';
       if(r>=1.25 && r<=1.45){ cls+=' excellent'; label='🎯 Perfect Gap: '+r+'x'; }
       else if(r>=1.15 && r<1.25){ cls+=' good'; label='✓ Good Gap: '+r+'x'; }
       else if(r<1.15){ cls+=' warning'; label='⚠ Tight Margin: '+r+'x'; }
       else { cls+=' good'; label='Gap: '+r+'x'; }
-      return `<span class="${cls}">${label}</span>`;
+      return '<span class="'+cls+'">'+label+'</span>';
     }
 
-    function detailsBlock(title, htmlInner){
-      return `<details class="block"><summary>${title}</summary><div class="content">${htmlInner}</div></details>`;
+    function detailsBlock(title, htmlInner, extraAttrs){
+      extraAttrs = extraAttrs || '';
+      return '<details class="block" '+extraAttrs+'><summary>'+title+'</summary><div class="content">'+htmlInner+'</div></details>';
     }
 
-    function displayResults(data, rehabBudget){
+    // Lazy-load listings for a ZIP into a target element id
+    var _loadedZip = new Set();
+    async function loadListingsOnce(zip, targetId, priceMax, arv, discount){
+      discount = (typeof discount === 'number') ? discount : 0.77;
+      if(!zip || _loadedZip.has(targetId)) return;
+      var target = document.getElementById(targetId);
+      if(!target) return;
+      _loadedZip.add(targetId);
+      target.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading listings for '+zip+'…</p></div>';
+      try{
+        var q = new URLSearchParams({ zip: zip, limit: '12' });
+        if(priceMax) q.set('price_max', String(priceMax));
+        if(arv) q.set('arv', String(arv));
+        q.set('discount', String(discount));
+
+        const res = await fetch(LIST_URL + '?' + q.toString());
+        const data = await res.json();
+
+        const c = data.counts || {};
+        var head = '<div style="margin-bottom:8px;color:#475569">'
+          + 'Supply: <strong>'+(c.active_total||0)+'</strong> active · '
+          + '≤ budget: <strong>'+(c.under_budget||0)+'</strong> · '
+          + 'in target band: <strong>'+(c.in_target_band||0)+'</strong>'
+          + '</div>';
+
+        const items = (data.results||[]).map(function(r){
+          var price = fmtMoney(r.price);
+          var beds = (r.beds!=null ? r.beds : '–');
+          var baths = (r.baths!=null ? r.baths : '–');
+          var dom = (r.dom!=null ? (r.dom+' DOM') : '');
+          var addr = (r.address || '') + (r.zip ? (' • '+r.zip) : '');
+          var photo = r.photo || '';
+          var link = r.url ? '<a href="'+r.url+'" target="_blank" rel="noopener">View listing</a>' : '';
+          return '<div class="listing">'
+            + '<img src="'+photo+'" alt="" />'
+            + '<div>'
+            +   '<div><strong>'+price+'</strong> — '+beds+' bd / '+baths+' ba · '+dom+'</div>'
+            +   '<div style="color:#475569">'+addr+'</div>'
+            +   link
+            + '</div>'
+            + '</div>';
+        }).join('');
+
+        target.innerHTML = head + '<div class="listings">' + (items || '<div>No listings found right now.</div>') + '</div>';
+      }catch(e){
+        console.error(e);
+        target.innerHTML = '<div class="error"><strong>Couldn’t load listings.</strong> Please try again later.</div>';
+      }
+    }
+
+    function displayResults(data, rehabBudget, maxPrice){
       const resultsDiv = document.getElementById('results');
       const grouped = !!data.grouped_by_neighborhood || !!data.neighborhoods;
       const items = grouped ? (data.neighborhoods || []) : (data.opportunities || []);
       if(!items.length){
-        resultsDiv.innerHTML = `<div class="empty"><h2>No areas found</h2><p>Try adjusting your budget range.</p></div>`;
+        resultsDiv.innerHTML = '<div class="empty"><h2>No areas found</h2><p>Try adjusting your budget range.</p></div>';
         return;
       }
 
-      const band = data.price_band_used ? `$${Number(data.price_band_used.min).toLocaleString()}–$${Number(data.price_band_used.max).toLocaleString()}` : null;
-      let html = `<div class="summary">
-        <div class="summary-item"><div class="summary-label">Tracts Analyzed</div><div class="summary-value">${data.total_tracts_analyzed||0}</div></div>
-        <div class="summary-item"><div class="summary-label">Areas Found</div><div class="summary-value">${data.summary?.total_meeting_criteria||0}</div></div>
-        <div class="summary-item"><div class="summary-label">Best Score</div><div class="summary-value">${data.summary?.top_score||0}/100</div></div>
-        <div class="summary-item"><div class="summary-label">Average Score</div><div class="summary-value">${data.summary?.avg_score||0}/100</div></div>
-        ${band ? `<div class="summary-item"><div class="summary-label">Your Purchase Budget</div><div class="summary-value">${band}</div></div>` : ''}
-      </div>
-      <div class="results">`;
+      const band = data.price_band_used ? ('$'+Number(data.price_band_used.min).toLocaleString()+'–$'+Number(data.price_band_used.max).toLocaleString()) : null;
+      var html = '<div class="summary">'
+        + '<div class="summary-item"><div class="summary-label">Tracts Analyzed</div><div class="summary-value">'+(data.total_tracts_analyzed||0)+'</div></div>'
+        + '<div class="summary-item"><div class="summary-label">Areas Found</div><div class="summary-value">'+(data.summary && data.summary.total_meeting_criteria || 0)+'</div></div>'
+        + '<div class="summary-item"><div class="summary-label">Best Score</div><div class="summary-value">'+(data.summary && data.summary.top_score || 0)+'/100</div></div>'
+        + '<div class="summary-item"><div class="summary-label">Average Score</div><div class="summary-value">'+(data.summary && data.summary.avg_score || 0)+'/100</div></div>'
+        + (band ? '<div class="summary-item"><div class="summary-label">Your Purchase Budget</div><div class="summary-value">'+band+'</div></div>' : '')
+        + '</div>'
+        + '<div class="results">';
 
-      items.forEach((item, idx) => {
+      items.forEach(function(item, idx){
         const score = item.score || 0;
         const scoreClass = getScoreClass(score);
         const scoreLabel = getScoreLabel(score);
 
-        const title = `${idx+1}. ${item.neighborhood || 'Neighborhood'}`;
-        const subtitle = [
-          item.county_name ? `${item.county_name} County` : null,
-          grouped && item.tracts_count!=null ? `${item.tracts_count} areas combined` : null
-        ].filter(Boolean).join(' • ');
+        const title = (idx+1)+'. '+(item.neighborhood || 'Neighborhood');
+        const subtitleParts = [];
+        if(item.county_name) subtitleParts.push(item.county_name + ' County');
+        if(grouped && item.tracts_count!=null) subtitleParts.push(item.tracts_count + ' areas combined');
+        const subtitle = subtitleParts.join(' • ');
 
         const chips = [];
         if(item.gap_ratio) chips.push(getGapChip(item.gap_ratio));
+        const zip = item.zip_code || item.zip_guess || null;
         if(grouped && item.zip_guess && !item.zip_code){
-          const conf = item.zip_confidence!=null ? ` (${Math.round(item.zip_confidence*100)}% match)` : '';
-          chips.push(`<span class="chip-zip">ZIP: ${item.zip_guess}${conf}</span>`);
+          const conf = (item.zip_confidence!=null ? (' ('+Math.round(item.zip_confidence*100)+'% match)') : '');
+          chips.push('<span class="chip-zip">ZIP: '+item.zip_guess+conf+'</span>');
         }
-        if(grouped && item.label_hint) chips.push(`<span class="chip-hint">${item.label_hint}</span>`);
-        const helpersRow = chips.length ? `<div class="chips">${chips.join('')}</div>` : '';
+        if(grouped && item.label_hint) chips.push('<span class="chip-hint">'+item.label_hint+'</span>');
+        const helpersRow = chips.length ? ('<div class="chips">'+chips.join('')+'</div>') : '';
 
         const domRow = (item.days_on_market!=null)
-          ? `<div class="info-row"><span class="info-label">Avg. Days on Market</span><span class="info-value">${item.days_on_market} days</span></div>`
+          ? '<div class="info-row"><span class="info-label">Avg. Days on Market</span><span class="info-value">'+item.days_on_market+' days</span></div>'
           : '';
-        const baseRows = `
-          <div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">${fmtMoney(item.median_home_value)}</span></div>
-          ${domRow}
-        `;
+        const baseRows =
+          '<div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">'+fmtMoney(item.median_home_value)+'</span></div>'
+          + domRow;
 
-        let flipCalc = '';
+        var flipCalc = '';
         if(item.median_home_value && item.gap_ratio){
           const purchaseEst = Math.round(item.median_home_value / item.gap_ratio);
           const sellEst = item.median_home_value;
           const profitEst = sellEst - purchaseEst - rehabBudget;
           const roiEst = ((profitEst / (purchaseEst + rehabBudget)) * 100).toFixed(1);
           flipCalc = detailsBlock('💵 Estimated Flip Potential',
-            `Buy distressed: <strong>~${fmtMoney(purchaseEst)}</strong><br>
-             Rehab budget: <strong>~${fmtMoney(rehabBudget)}</strong><br>
-             Sell at median: <strong>${fmtMoney(sellEst)}</strong><br>
-             Est. Profit: <strong style="color:${profitEst>0? 'var(--ok)':'var(--warn)'}">${fmtMoney(profitEst)}</strong> (${roiEst}% ROI)`
+            'Buy distressed: <strong>~'+fmtMoney(purchaseEst)+'</strong><br>'
+            + 'Rehab budget: <strong>~'+fmtMoney(rehabBudget)+'</strong><br>'
+            + 'Sell at median: <strong>'+fmtMoney(sellEst)+'</strong><br>'
+            + 'Est. Profit: <strong style="color:'+(profitEst>0? 'var(--ok)':'var(--warn)')+'">'+fmtMoney(profitEst)+'</strong> ('+roiEst+'% ROI)'
           );
         }
 
-        let whySection = '';
+        var whySection = '';
         const insights = item.insights || [];
         const warnings = item.warnings || [];
         if (insights.length || warnings.length) {
-          let list = '';
-          insights.forEach(s => list += `<li>✓ ${s}</li>`);
-          warnings.forEach(w => list += `<li>! ${w}</li>`);
-          whySection = detailsBlock('💡 Why This Area', `<ul class="bullets">${list}</ul>`);
+          var list = '';
+          insights.forEach(function(s){ list += '<li>✓ '+s+'</li>'; });
+          warnings.forEach(function(w){ list += '<li>! '+w+'</li>'; });
+          whySection = detailsBlock('💡 Why This Area', '<ul class="bullets">'+list+'</ul>');
         }
 
-        const members = (grouped && item.member_tracts?.length)
+        const members = (grouped && item.member_tracts && item.member_tracts.length)
           ? detailsBlock('🧩 Included census tracts',
-              `${item.member_tracts.slice(0,12).map(m=>m.tract_id).join(', ')}${item.member_tracts.length>12?'…':''}`)
+              item.member_tracts.slice(0,12).map(function(m){ return m.tract_id; }).join(', ')
+              + (item.member_tracts.length>12 ? '…' : '')
+            )
           : '';
 
-        html += `<div class="tract-card">
-          <div class="score-badge ${scoreClass}"><div>${score}</div><div class="score-label">${scoreLabel}</div></div>
-          <div class="tract-title">${title}</div>
-          <div class="tract-sub">${subtitle}</div>
-          ${helpersRow}
-          <div class="tract-info">${baseRows}</div>
-          ${flipCalc}
-          ${whySection}
-          ${members}
-        </div>`;
+        // Listings block (lazy)
+        const listId = 'list-'+idx;
+        const listingsDetails = zip
+          ? detailsBlock('🏠 Current listings' + (zip ? (' (ZIP '+zip+')') : ''),
+              '<div id="'+listId+'">'
+              +  '<div class="ghost" style="width:65%"></div>'
+              +  '<div class="ghost" style="width:50%; margin-top:6px"></div>'
+              + '</div>'
+            )
+          : '';
+
+        html += '<div class="tract-card"'
+          + (zip ? (' data-zip="'+zip+'" data-listid="'+listId+'" data-arv="'+(item.median_home_value || '')+'"') : '')
+          + '>'
+          + '<div class="score-badge '+scoreClass+'"><div>'+score+'</div><div class="score-label">'+scoreLabel+'</div></div>'
+          + '<div class="tract-title">'+title+'</div>'
+          + '<div class="tract-sub">'+subtitle+'</div>'
+          + helpersRow
+          + '<div class="tract-info">'+baseRows+'</div>'
+          + flipCalc
+          + whySection
+          + members
+          + listingsDetails
+          + '</div>';
       });
 
       html += '</div>';
       resultsDiv.innerHTML = html;
+
+      // Attach 'toggle' handlers for listings
+      document.querySelectorAll('.tract-card details.block').forEach(function(det){
+        const card = det.closest('.tract-card');
+        if(!card) return;
+        const zip = card.getAttribute('data-zip');
+        const listId = card.getAttribute('data-listid');
+        const arv = Number(card.getAttribute('data-arv') || 0);
+        det.addEventListener('toggle', function(){
+          if(det.open && zip && listId && det.querySelector('#'+listId)){
+            const maxPrice = Number(document.getElementById('maxPrice').value || 0);
+            loadListingsOnce(zip, listId, maxPrice, arv, 0.77);
+          }
+        });
+      });
     }
   </script>
 </body>

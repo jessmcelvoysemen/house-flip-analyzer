@@ -84,6 +84,27 @@ def neighborhood_label(county_name: str, tract: str) -> str:
         return "Anderson — East Side (Central)"
     return f"{county_name} County — Outlying Areas Subarea"
 
+# --- Listings cache (per ZIP) ---
+_listings_cache = {}  # { zip: {"ts": ISO_UTC, "data": {...}} }
+LISTINGS_CACHE_HOURS = 6
+
+def _cache_get_listings(zip_code: str):
+    entry = _listings_cache.get(zip_code)
+    if not entry:
+        return None
+    try:
+        ts = datetime.fromisoformat(entry["ts"])
+        if datetime.utcnow() - ts > timedelta(hours=LISTINGS_CACHE_HOURS):
+            del _listings_cache[zip_code]
+            return None
+    except Exception:
+        del _listings_cache[zip_code]
+        return None
+    return entry["data"]
+
+def _cache_set_listings(zip_code: str, data: dict) -> None:
+    _listings_cache[zip_code] = {"ts": datetime.utcnow().isoformat(), "data": data}
+
 # === CENSUS DATA WITH CACHE/RETRY ===
 
 def get_cached_census_data(county_fips: str) -> Optional[List[List[str]]]:
@@ -189,7 +210,15 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
         return {"median_days_on_market": None}
 
 def get_zip_for_tract(county_fips: str, tract: str) -> Optional[str]:
-    if county_fips == "097":  # Marion
+    t2 = int((tract or "000000").zfill(6)[:2])
+    if county_fips == "057":  # Hamilton
+        if t2 <= 11: return "46060"   # Noblesville-ish
+        if t2 <= 20: return "46062"   # Westfield-ish
+        return "46038"                # Fishers-ish
+    if county_fips == "063":  # Hendricks
+        return "46123"                 # Avon-ish
+    if county_fips == "081":  # Johnson
+        return "46143"                 # Greenwood-ishif county_fips == "097":  # Marion
         head = int((tract or "000000").zfill(6)[:2])
         if head <= 15: return "46219"
         if head <= 25: return "46227"
@@ -391,7 +420,7 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             or req.params.get("use_market_data"),
             False
         )
-        if top_n > 30:
+        if top_n > 50:
             include_market_data = False  # throttle to avoid timeouts
 
         do_group = _to_bool(
@@ -536,3 +565,148 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"status": "error","message": str(e),"details": "Check Azure logs for full error details"}),
             status_code=500, mimetype="application/json", headers=CORS_HEADERS
         )
+        
+@app.route(route="listings", methods=["GET"])
+def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Returns active listings for a ZIP using the same RapidAPI provider you already use.
+    Query params:
+      zip          (required)
+      limit        default 12
+      price_max    optional: user's max purchase price (for "under budget" count)
+      arv          optional: ARV/median value, used with 'discount' to count the target band
+      discount     optional: default 0.77 (i.e., <= 77% of ARV is "target band")
+    """
+    if not (RAPIDAPI_KEY and RAPIDAPI_HOST and RAPIDAPI_TEST_URL):
+        return func.HttpResponse(
+            json.dumps({"status": "error", "message": "Market/listings API not configured"}),
+            status_code=400, mimetype="application/json", headers=CORS_HEADERS
+        )
+
+    zip_code = (req.params.get("zip") or "").strip()
+    if not zip_code:
+        return func.HttpResponse(
+            json.dumps({"status": "error", "message": "zip is required"}),
+            status_code=400, mimetype="application/json", headers=CORS_HEADERS
+        )
+
+    try:
+        limit = max(1, min(int(req.params.get("limit", "12")), 50))
+    except Exception:
+        limit = 12
+
+    # Optional thresholds for counts
+    try:
+        price_max = int(req.params.get("price_max")) if req.params.get("price_max") else None
+    except Exception:
+        price_max = None
+
+    try:
+        arv = int(float(req.params.get("arv"))) if req.params.get("arv") else None
+    except Exception:
+        arv = None
+
+    try:
+        discount = float(req.params.get("discount", "0.77"))
+    except Exception:
+        discount = 0.77
+
+    # Cache hit?
+    cached = _cache_get_listings(zip_code)
+    if cached is not None:
+        data = cached
+    else:
+        # Call RapidAPI provider (same as DOM provider; different payload intent)
+        payload = {
+            "limit": max(25, limit),   # fetch a few more so counts are meaningful
+            "offset": 0,
+            "postal_code": zip_code,
+            "status": ["for_sale", "under_contract"],
+            "sort": {"direction": "desc", "field": "list_date"},
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "x-rapidapi-key": RAPIDAPI_KEY,
+            "x-rapidapi-host": RAPIDAPI_HOST,
+        }
+        try:
+            r = requests.post(RAPIDAPI_TEST_URL, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+            if r.status_code == 404:
+                data = {"results": [], "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}}
+            else:
+                r.raise_for_status()
+                raw = r.json()
+                props = (raw or {}).get("data", {}).get("home_search", {}).get("results", []) or []
+
+                items = []
+                under_budget = 0
+                in_target = 0
+                target_price = None
+                if arv and discount:
+                    target_price = int(arv * discount)
+
+                for p in props:
+                    # Normalize a handful of fields (many feeds use similar names)
+                    price = (
+                        p.get("list_price") or p.get("price") or
+                        (p.get("location") or {}).get("address", {}).get("coordinate", {}).get("price")
+                    )
+                    if not isinstance(price, (int, float)):
+                        continue
+
+                    addr = (p.get("location") or {}).get("address", {}) or {}
+                    line = addr.get("line") or ""
+                    city = addr.get("city") or ""
+                    state = addr.get("state_code") or addr.get("state") or ""
+                    postal = addr.get("postal_code") or zip_code
+
+                    beds = p.get("description", {}).get("beds") or p.get("beds")
+                    baths = p.get("description", {}).get("baths") or p.get("baths")
+                    dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
+
+                    # Link & photo if present
+                    href = (p.get("href") or p.get("permalink") or p.get("rdc_web_url") or "")
+                    photo = ""
+                    photos = p.get("photos") or []
+                    if isinstance(photos, list) and photos:
+                        first = photos[0]
+                        photo = first.get("href") or first.get("url") or ""
+
+                    items.append({
+                        "price": int(price),
+                        "address": ", ".join([s for s in [line, city, state] if s]),
+                        "zip": postal,
+                        "beds": beds,
+                        "baths": baths,
+                        "dom": dom if isinstance(dom, int) else None,
+                        "url": href,
+                        "photo": photo
+                    })
+
+                    if price_max and price <= price_max:
+                        under_budget += 1
+                    if target_price and price <= target_price:
+                        in_target += 1
+
+                data = {
+                    "results": sorted(items, key=lambda x: x["price"])[:limit],
+                    "counts": {
+                        "active_total": len(items),
+                        "under_budget": under_budget,
+                        "in_target_band": in_target
+                    }
+                }
+
+            _cache_set_listings(zip_code, data)
+
+        except Exception as e:
+            logging.warning("Listings fetch failed for %s: %s", zip_code, e)
+            data = {"results": [], "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}}
+
+    return func.HttpResponse(json.dumps({
+        "status": "success",
+        "zip": zip_code,
+        "discount_used": discount,
+        "counts": data.get("counts", {}),
+        "results": data.get("results", [])
+    }, indent=2), mimetype="application/json", headers=CORS_HEADERS)
