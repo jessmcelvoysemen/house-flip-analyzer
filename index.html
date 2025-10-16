@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PajeClip House Flip Analyzer</title>
+  <title>FlipScope - House Flip Market Analyzer</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
@@ -15,9 +15,92 @@
     header { background:#fff; padding:30px; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,.1); margin-bottom:30px; }
     h1 { color:#2d3748; font-size:32px; margin-bottom:10px; }
     .subtitle { color:#718096; font-size:16px; margin-bottom:20px; }
+    
+    .score-explainer {
+      background: linear-gradient(135deg, #f6e05e 0%, #f6ad55 100%);
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      border-left: 5px solid #ed8936;
+    }
+    .score-explainer h3 {
+      font-size: 18px;
+      color: #744210;
+      margin-bottom: 10px;
+    }
+    .score-explainer p {
+      color: #744210;
+      line-height: 1.6;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .strategy-note {
+      background: rgba(255,255,255,0.4);
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 10px;
+      border-left: 3px solid #ed8936;
+    }
+    .strategy-note strong {
+      color: #744210;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .score-breakdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .score-factor {
+      background: rgba(255,255,255,0.3);
+      padding: 12px;
+      border-radius: 6px;
+    }
+    .score-factor-title {
+      font-weight: 600;
+      color: #744210;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .score-factor-desc {
+      font-size: 12px;
+      color: #975a16;
+      line-height: 1.4;
+    }
+    
     .controls { display:flex; gap:15px; flex-wrap:wrap; align-items:end; }
     .control-group { display:flex; flex-direction:column; gap:5px; }
-    label { font-size:14px; font-weight:600; color:#4a5568; }
+    label { font-size:14px; font-weight:600; color:#4a5568; display: flex; align-items: center; gap: 6px; }
+    .tooltip {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      background: #cbd5e0;
+      color: #2d3748;
+      border-radius: 50%;
+      text-align: center;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: help;
+      line-height: 16px;
+      position: relative;
+    }
+    .tooltip:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      background: #2d3748;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: normal;
+      width: 200px;
+      margin-left: -90px;
+      margin-top: 25px;
+      z-index: 1000;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+    }
     input, select { padding:10px 15px; border:2px solid #e2e8f0; border-radius:6px; font-size:14px; transition:all .2s; }
     input:focus, select:focus { outline:none; border-color:#667eea; }
     button {
@@ -35,84 +118,202 @@
     .summary-item { flex:1; min-width:150px; }
     .summary-label { font-size:14px; color:#718096; margin-bottom:5px; }
     .summary-value { font-size:22px; font-weight:700; color:#2d3748; }
-    .results { display:grid; grid-template-columns: repeat(auto-fill, minmax(350px,1fr)); gap:20px; }
+    .results { display:grid; grid-template-columns: repeat(auto-fill, minmax(370px,1fr)); gap:20px; }
     .tract-card { background:#fff; border-radius:12px; padding:25px; box-shadow:0 4px 6px rgba(0,0,0,.1); transition: transform .2s, box-shadow .2s; position:relative; overflow:hidden; }
     .tract-card:hover { transform:translateY(-5px); box-shadow:0 8px 15px rgba(0,0,0,.15); }
-    .score-badge { position:absolute; top:20px; right:20px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:#fff; padding:10px 15px; border-radius:8px; font-weight:700; font-size:20px; }
-    .tract-title { font-size:18px; font-weight:700; color:#2d3748; margin-bottom:6px; padding-right:80px; }
+    
+    .score-badge { 
+      position:absolute; top:20px; right:20px; 
+      color:#fff; padding:10px 15px; border-radius:8px; 
+      font-weight:700; font-size:20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 80px;
+    }
+    .score-badge.excellent { background:linear-gradient(135deg, #48bb78 0%, #38a169 100%); }
+    .score-badge.very-good { background:linear-gradient(135deg, #4299e1 0%, #3182ce 100%); }
+    .score-badge.good { background:linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); }
+    .score-badge.fair { background:linear-gradient(135deg, #ecc94b 0%, #d69e2e 100%); }
+    .score-badge.poor { background:linear-gradient(135deg, #fc8181 0%, #f56565 100%); }
+    .score-label {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      margin-top: 2px;
+      opacity: 0.9;
+    }
+    
+    .tract-title { font-size:18px; font-weight:700; color:#2d3748; margin-bottom:6px; padding-right:100px; }
     .tract-sub { font-size:12px; color:#a0aec0; margin-bottom:8px; }
     .chips { margin:8px 0 2px 0; display:flex; gap:8px; flex-wrap:wrap; }
     .chip-zip { display:inline-block;background:#ebf4ff;color:#2b6cb0;border:1px solid #90cdf4;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600; }
     .chip-hint{ display:inline-block;background:#f7fafc;color:#4a5568;border:1px solid #e2e8f0;padding:2px 8px;border-radius:999px;font-size:12px; }
+    .chip-gap { display:inline-block;background:#d4edda;color:#155724;border:1px solid #c3e6cb;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600; }
+    .chip-gap.excellent { background:#d4edda; color:#155724; }
+    .chip-gap.good { background:#fff3cd; color:#856404; }
+    .chip-gap.warning { background:#f8d7da; color:#721c24; }
+    
     .tract-info { display:grid; gap:10px; margin-bottom:15px; padding-bottom:15px; border-bottom:2px solid #f7fafc; }
-    .info-row { display:flex; justify-content:space-between; font-size:14px; }
+    .info-row { display:flex; justify-content:space-between; font-size:14px; align-items: center; }
     .info-label { color:#718096; font-weight:500; }
-    .info-value { color:#2d3748; font-weight:600; }
+    .info-value { color:#2d3748; font-weight:600; text-align: right; }
+    
+    .flip-potential {
+      background: #f0f9ff;
+      border-left: 3px solid #3b82f6;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    .flip-potential-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e40af;
+      margin-bottom: 6px;
+    }
+    .flip-potential-calc {
+      font-size: 12px;
+      color: #1e3a8a;
+      line-height: 1.6;
+    }
+    
+    .why-section {
+      background: #f7fafc;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    .why-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .why-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .why-item {
+      display: flex;
+      align-items: start;
+      gap: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .why-icon {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      background: #48bb78;
+      color: white;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 18px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .why-icon.warning {
+      background: #ed8936;
+    }
+    
     .reasons { margin-top:15px; }
     .reasons-title { font-size:13px; font-weight:600; color:#4a5568; margin-bottom:8px; }
     .reason { font-size:13px; color:#4a5568; padding:5px 0; line-height:1.4; }
-    .flag { display:inline-block; background:#fed7d7; color:#c53030; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:600; margin-left:5px; }
     .error { background:#fff5f5; border:2px solid #fc8181; color:#c53030; padding:20px; border-radius:12px; margin-bottom:20px; }
     .empty { background:#fff; padding:60px 40px; border-radius:12px; text-align:center; color:#718096; font-size:18px; }
     small.hint { color:#718096; font-size:12px; }
-    @keyframes fadeIn { from {opacity:0} to {opacity:1} }
     @media (max-width:768px){ .results{grid-template-columns:1fr} .controls{flex-direction:column; align-items:stretch} button{width:100%} }
   </style>
 </head>
 <body>
 <div class="container">
   <header>
-    <h1>🏠 PajeClip House Flip Analyzer</h1>
-    <p class="subtitle">Find the best neighborhoods for our budget to fix-and-flip</p>
+    <h1>🏠 Flip Analyzer</h1>
+    <p class="subtitle">Data-driven neighborhood analysis for house flipping in Central Indiana</p>
+
+    <div class="score-explainer">
+      <h3>💡 How The App Scores Areas (0-100 points)</h3>
+      <p>The app analyzes census data and real estate market conditions using a <strong>"Buy Low, Sell High" strategy</strong>. It looks for neighborhoods where you can buy distressed properties BELOW the median home value, rehab them, and sell AT the median price.</p>
+      
+      <div class="strategy-note">
+        <strong>📊 Your Purchase Budget vs. Neighborhood Median:</strong>
+        <span style="font-size: 12px; color: #975a16;">Budget range ($200-225k) = what you'll pay to BUY the house. Searches for neighborhoods where the median is 1.3-1.4x your budget, meaning you can buy distressed homes at your price and sell them at neighborhood median for profit.</span>
+      </div>
+      
+      <div class="score-breakdown">
+        <div class="score-factor">
+          <div class="score-factor-title">🎯 Buy-Sell Gap (40%)</div>
+          <div class="score-factor-desc">Ideal: median home value 1.3-1.4x your max budget. Example: buy at $220k, sell at $297k median</div>
+        </div>
+        <div class="score-factor">
+          <div class="score-factor-title">🏚️ Vacancy Rate (25%)</div>
+          <div class="score-factor-desc">8-15% is ideal - means inventory available without being distressed</div>
+        </div>
+        <div class="score-factor">
+          <div class="score-factor-title">💰 Buyer Income (25%)</div>
+          <div class="score-factor-desc">Buyers need 3-4x income to afford median price. Strong income = strong resale market</div>
+        </div>
+        <div class="score-factor">
+          <div class="score-factor-title">⚡ Market Velocity (10%)</div>
+          <div class="score-factor-desc">Faster sales (<40 days) = hot market with strong demand</div>
+        </div>
+      </div>
+    </div>
 
     <div class="controls">
       <div class="control-group">
-        <label for="topResults">Show Top Results</label>
-        <select id="topResults">
-          <option value="10">Top 10</option>
-          <option value="25" selected>Top 25</option>
-          <option value="50">Top 50</option>
-          <option value="100">Top 100</option>
-        </select>
-      </div>
-
-      <div class="control-group">
-        <label for="minScore">Minimum Score</label>
+        <label>
+          Minimum quality
+          <span class="tooltip" data-tooltip="Filter out lower-quality areas. 'Good' is a safe starting point">?</span>
+        </label>
         <select id="minScore">
-          <option value="0">All Results</option>
-          <option value="50" selected>50+ (Good)</option>
-          <option value="70">70+ (Very Good)</option>
-          <option value="80">80+ (Excellent)</option>
+          <option value="0">Show All Areas</option>
+          <option value="50" selected>Good or Better (50+)</option>
+          <option value="70">Very Good or Better (70+)</option>
+          <option value="80">Only Excellent (80+)</option>
         </select>
       </div>
 
       <div class="control-group">
-        <label for="minPrice">Min Budget</label>
+        <label>
+          Min Purchase Price
+          <span class="tooltip" data-tooltip="Lowest price you'll pay to BUY the house (before rehab costs)">?</span>
+        </label>
         <input id="minPrice" type="number" value="200000" min="0" step="5000" />
       </div>
 
       <div class="control-group">
-        <label for="maxPrice">Max Budget</label>
+        <label>
+          Max Purchase Price
+          <span class="tooltip" data-tooltip="Highest price you'll pay to BUY the house (before rehab costs)">?</span>
+        </label>
         <input id="maxPrice" type="number" value="225000" min="0" step="5000" />
       </div>
 
       <div class="control-group">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="checkbox" id="includeMarketData" style="width:auto; cursor:pointer;" checked>
-          <span>Include Days on Market</span>
+          <span>Show Days on Market</span>
+          <span class="tooltip" data-tooltip="How long properties sit on the market - faster is better for flipping">?</span>
         </label>
-        <small class="hint">Uses API quota</small>
+        <small class="hint">Uses API quota (limited requests)</small>
       </div>
 
       <div class="control-group">
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
           <input type="checkbox" id="groupNeighborhoods" style="width:auto; cursor:pointer;" checked>
-          <span>Group similar neighborhoods</span>
+          <span>Group nearby areas</span>
+          <span class="tooltip" data-tooltip="Combines similar census tracts into broader neighborhoods for easier viewing">?</span>
         </label>
-        <small class="hint">Aggregates tracts by area</small>
+        <small class="hint">Easier to understand</small>
       </div>
 
-      <button id="analyzeBtn" onclick="analyzeNeighborhoods()">🔍 Analyze Neighborhoods</button>
+      <button id="analyzeBtn" onclick="analyzeNeighborhoods()">🔍 Find Best Flip Opportunities</button>
     </div>
   </header>
 
@@ -126,7 +327,6 @@
     const resultsDiv = document.getElementById('results');
     const analyzeBtn = document.getElementById('analyzeBtn');
 
-    const topResults = document.getElementById('topResults').value;
     const minScore = document.getElementById('minScore').value;
     const minPrice = document.getElementById('minPrice').value || '200000';
     const maxPrice = document.getElementById('maxPrice').value || '225000';
@@ -139,12 +339,12 @@
         '<div class="spinner"></div>' +
         '<p>Analyzing census data across Central Indiana...</p>' +
         (includeMarketData ? '<p class="hint" style="margin-top:10px;">Fetching real-time market data…</p>' : '') +
-        (groupNeighborhoods ? '<p class="hint" style="margin-top:6px;">Aggregating similar neighborhoods…</p>' : '') +
+        (groupNeighborhoods ? '<p class="hint" style="margin-top:6px;">Grouping similar areas…</p>' : '') +
       '</div>';
 
     try {
       let url = API_URL
-        + '?top=' + encodeURIComponent(topResults)
+        + '?top=999'
         + '&min_score=' + encodeURIComponent(minScore)
         + '&price_min=' + encodeURIComponent(minPrice)
         + '&price_max=' + encodeURIComponent(maxPrice);
@@ -166,16 +366,54 @@
           '<h3 style="margin-bottom:10px;">⚠️ Error Loading Data</h3>' +
           '<p><strong>Error:</strong> ' + (err.message || err) + '</p>' +
           '<p style="margin-top:15px; font-size:14px;">' +
-            '<strong>Troubleshooting:</strong><br>' +
-            '1) Ensure the Azure Function is running<br>' +
-            '2) Confirm API_URL matches your function URL<br>' +
-            '3) Verify CORS allows this origin<br>' +
-            '4) Hard-refresh the page to clear cache' +
+            '<strong>What to try:</strong><br>' +
+            '1) Refresh the page and try again<br>' +
+            '2) Check your internet connection<br>' +
+            '3) Contact the admin if this keeps happening' +
           '</p>' +
         '</div>';
     } finally {
       analyzeBtn.disabled = false;
     }
+  }
+
+  function getScoreClass(score) {
+    if (score >= 80) return 'excellent';
+    if (score >= 70) return 'very-good';
+    if (score >= 50) return 'good';
+    if (score >= 30) return 'fair';
+    return 'poor';
+  }
+
+  function getScoreLabel(score) {
+    if (score >= 80) return 'Excellent';
+    if (score >= 70) return 'Very Good';
+    if (score >= 50) return 'Good';
+    if (score >= 30) return 'Fair';
+    return 'Poor';
+  }
+
+  function getGapChip(gapRatio) {
+    if (!gapRatio) return '';
+    
+    let chipClass = 'chip-gap';
+    let label = '';
+    
+    if (gapRatio >= 1.25 && gapRatio <= 1.45) {
+      chipClass += ' excellent';
+      label = '🎯 Perfect Gap: ' + gapRatio + 'x';
+    } else if (gapRatio >= 1.15 && gapRatio < 1.25) {
+      chipClass += ' good';
+      label = '✓ Good Gap: ' + gapRatio + 'x';
+    } else if (gapRatio < 1.15) {
+      chipClass += ' warning';
+      label = '⚠ Tight Margin: ' + gapRatio + 'x';
+    } else {
+      chipClass += ' good';
+      label = 'Gap: ' + gapRatio + 'x';
+    }
+    
+    return '<span class="' + chipClass + '">' + label + '</span>';
   }
 
   function displayResults(data) {
@@ -186,8 +424,8 @@
     if (!items.length) {
       resultsDiv.innerHTML =
         '<div class="empty">' +
-          '<h2>No ' + (grouped ? 'neighborhoods' : 'opportunities') + ' found matching your criteria</h2>' +
-          '<p style="margin-top:10px;">Try lowering the minimum score filter</p>' +
+          '<h2>No areas found matching your filters</h2>' +
+          '<p style="margin-top:10px;">Try lowering the "Minimum quality" filter or adjusting your budget range</p>' +
         '</div>';
       return;
     }
@@ -202,7 +440,7 @@
     html +=
       '<div class="summary">' +
         '<div class="summary-item">' +
-          '<div class="summary-label">Tracts Analyzed</div>' +
+          '<div class="summary-label">Census Tracts Analyzed</div>' +
           '<div class="summary-value">' + (data.total_tracts_analyzed || 0) + '</div>' +
         '</div>' +
         '<div class="summary-item">' +
@@ -210,7 +448,7 @@
           '<div class="summary-value">' + (data.summary.total_meeting_criteria || 0) + '</div>' +
         '</div>' +
         '<div class="summary-item">' +
-          '<div class="summary-label">Top Score</div>' +
+          '<div class="summary-label">Best Score</div>' +
           '<div class="summary-value">' + (data.summary.top_score || 0) + '/100</div>' +
         '</div>' +
         '<div class="summary-item">' +
@@ -219,7 +457,7 @@
         '</div>' +
         (band ? (
           '<div class="summary-item">' +
-            '<div class="summary-label">Budget Band Used</div>' +
+            '<div class="summary-label">Your Purchase Budget</div>' +
             '<div class="summary-value">' + band + '</div>' +
           '</div>'
         ) : '') +
@@ -228,12 +466,9 @@
     html += '<div class="results">';
 
     items.forEach(function(item, idx) {
-      const flags = item.flags || [];
-      const flagsHtml = flags.map(function(f){
-        return '<span class="flag">' + String(f).replace(/_/g,' ') + '</span>';
-      }).join('');
-
-      // Title upgrading for Subareas with zip_guess
+      const scoreClass = getScoreClass(item.score || 0);
+      const scoreLabel = getScoreLabel(item.score || 0);
+      
       var nameForTitle = item.neighborhood || 'Neighborhood';
       if (grouped && /–\s*Subarea$/i.test(nameForTitle) && item.zip_guess) {
         nameForTitle = nameForTitle.replace(/–\s*Subarea$/i, '– ' + item.zip_guess);
@@ -242,30 +477,57 @@
 
       var subParts = [];
       if (item.county_name) subParts.push(item.county_name + ' County');
-      if (grouped && item.tracts_count != null) subParts.push(item.tracts_count + ' tracts combined');
+      if (grouped && item.tracts_count != null) subParts.push(item.tracts_count + ' areas combined');
       var subtitle = subParts.join(' • ');
 
-      // Chips: zip guess / hint
+      // Chips
       var helpersRow = '';
-      if (grouped && (item.zip_guess || item.label_hint)) {
-        var chips = [];
-        if (item.zip_guess && !item.zip_code) {
-          var conf = (item.zip_confidence != null) ? ' (' + Math.round(item.zip_confidence*100) + '%)' : '';
-          chips.push('<span class="chip-zip">ZIP guess: ' + item.zip_guess + conf + '</span>');
-        }
-        if (item.label_hint) chips.push('<span class="chip-hint">' + item.label_hint + '</span>');
-        if (chips.length) helpersRow = '<div class="chips">' + chips.join('') + '</div>';
+      var chips = [];
+      
+      if (item.gap_ratio) {
+        chips.push(getGapChip(item.gap_ratio));
       }
+      
+      if (grouped && item.zip_guess && !item.zip_code) {
+        var conf = (item.zip_confidence != null) ? ' (' + Math.round(item.zip_confidence*100) + '% match)' : '';
+        chips.push('<span class="chip-zip">ZIP: ' + item.zip_guess + conf + '</span>');
+      }
+      if (grouped && item.label_hint) {
+        chips.push('<span class="chip-hint">' + item.label_hint + '</span>');
+      }
+      
+      if (chips.length) helpersRow = '<div class="chips">' + chips.join('') + '</div>';
 
       function fmtMoney(x){ return x ? ('$' + Number(x).toLocaleString()) : 'N/A'; }
       function fmtPct(x){ return (x != null) ? (Number(x).toFixed(1) + '%') : 'N/A'; }
       function fmtInt(x){ return x ? Number(x).toLocaleString() : 'N/A'; }
 
+      // Flip Potential Calculator
+      var flipCalc = '';
+      if (item.median_home_value && item.gap_ratio) {
+        const purchaseEst = Math.round(item.median_home_value / item.gap_ratio);
+        const sellEst = item.median_home_value;
+        const rehabEst = 40000; // Default assumption
+        const profitEst = sellEst - purchaseEst - rehabEst;
+        const roiEst = ((profitEst / (purchaseEst + rehabEst)) * 100).toFixed(1);
+        
+        flipCalc = 
+          '<div class="flip-potential">' +
+            '<div class="flip-potential-title">💵 Estimated Flip Potential</div>' +
+            '<div class="flip-potential-calc">' +
+              'Buy distressed: <strong>~' + fmtMoney(purchaseEst) + '</strong><br>' +
+              'Rehab budget: <strong>~$40,000</strong> (adjust for actual)<br>' +
+              'Sell at median: <strong>' + fmtMoney(sellEst) + '</strong><br>' +
+              'Est. Profit: <strong style="color: ' + (profitEst > 0 ? '#16a34a' : '#dc2626') + ';">' + fmtMoney(profitEst) + '</strong> (' + roiEst + '% ROI)' +
+            '</div>' +
+          '</div>';
+      }
+
       var domRow = '';
       if (item.days_on_market) {
         domRow =
           '<div class="info-row" style="border-top:2px solid #e2e8f0; padding-top:10px; margin-top:10px;">' +
-            '<span class="info-label">📊 Days on Market</span>' +
+            '<span class="info-label">📊 Avg. Days on Market</span>' +
             '<span class="info-value" style="color:#667eea; font-weight:700;">' + item.days_on_market + ' days</span>' +
           '</div>';
       }
@@ -276,7 +538,7 @@
           '<span class="info-value">' + fmtMoney(item.median_home_value) + '</span>' +
         '</div>' +
         '<div class="info-row">' +
-          '<span class="info-label">Median Income</span>' +
+          '<span class="info-label">Median Household Income</span>' +
           '<span class="info-value">' + fmtMoney(item.median_income) + '</span>' +
         '</div>' +
         '<div class="info-row">' +
@@ -284,51 +546,43 @@
           '<span class="info-value">' + fmtPct(item.vacancy_pct) + '</span>' +
         '</div>' +
         '<div class="info-row">' +
-          '<span class="info-label">' + (grouped ? 'Combined Population' : 'Population') + '</span>' +
+          '<span class="info-label">' + (grouped ? 'Total Population' : 'Population') + '</span>' +
           '<span class="info-value">' + fmtInt(item.total_pop) + '</span>' +
         '</div>' +
-        (grouped ? '' :
-          ('<div class="info-row">' +
-             '<span class="info-label">Housing Units</span>' +
-             '<span class="info-value">' + fmtInt(item.housing_units) + '</span>' +
-           '</div>')
-        ) +
         domRow;
+
+      // Why this area section
+      var whySection = '';
+      const insights = item.insights || [];
+      const warnings = item.warnings || [];
+      
+      if (insights.length || warnings.length) {
+        whySection = '<div class="why-section">' +
+          '<div class="why-title">💡 Why This Area:</div>' +
+          '<div class="why-list">';
+        
+        insights.forEach(function(insight) {
+          whySection += '<div class="why-item"><span class="why-icon">✓</span><span>' + insight + '</span></div>';
+        });
+        
+        warnings.forEach(function(warning) {
+          whySection += '<div class="why-item"><span class="why-icon warning">!</span><span>' + warning + '</span></div>';
+        });
+        
+        whySection += '</div></div>';
+      }
 
       html +=
         '<div class="tract-card">' +
-          '<div class="score-badge">' + (item.score != null ? item.score : '—') + '/100</div>' +
+          '<div class="score-badge ' + scoreClass + '">' +
+            '<div>' + (item.score != null ? item.score : '–') + '</div>' +
+            '<div class="score-label">' + scoreLabel + '</div>' +
+          '</div>' +
           '<div class="tract-title">' + title + '</div>' +
           '<div class="tract-sub">' + subtitle + '</div>' +
           helpersRow +
+          flipCalc +
           '<div class="tract-info">' + baseRows + '</div>' +
-          (flagsHtml ? ('<div style="margin-bottom:10px;">' + flagsHtml + '</div>') : '') +
+          whySection +
           (grouped && item.member_tracts && item.member_tracts.length ?
-            ('<div class="reasons" style="margin-top:6px;">' +
-               '<div class="reasons-title">Included Tracts:</div>' +
-               '<div class="reason" style="color:#718096;">' +
-                 item.member_tracts.slice(0,6).map(function(m){return m.tract_id;}).join(', ') +
-                 (item.member_tracts.length > 6 ? '…' : '') +
-               '</div>' +
-             '</div>')
-           : ''
-          ) +
-          (!grouped && item.reasons ?
-            ('<div class="reasons">' +
-               '<div class="reasons-title">Why This Area:</div>' +
-               item.reasons.map(function(r){ return '<div class="reason">• ' + r + '</div>'; }).join('') +
-             '</div>')
-           : ''
-          ) +
-        '</div>';
-    });
-
-    html += '</div>';
-    resultsDiv.innerHTML = html;
-  }
-
-  // Optional: auto-run on load
-  // window.addEventListener('load', analyzeNeighborhoods);
-</script>
-</body>
-</html>
+            ('<div class="

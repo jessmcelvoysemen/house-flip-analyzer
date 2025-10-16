@@ -18,23 +18,20 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 # -------------------------------------------------
 
 # Census API (ACS 5-year)
-# ACS dataset: 2023 5-year estimates (most recent)
 ACS_YEAR = "2023"
 ACS_BASE = f"https://api.census.gov/data/{ACS_YEAR}/acs/acs5"
-
 
 # RapidAPI (Realtor/Realty-in-US) for market stats / DOM
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
 RAPIDAPI_HOST = os.environ.get("RAPIDAPI_HOST", "realty-in-us.p.rapidapi.com")
-# This is the v3 properties search endpoint used to derive median DOM
 RAPIDAPI_TEST_URL = os.environ.get(
     "RAPIDAPI_TEST_URL",
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
 
 # ----- Flip budget band (defaults). Overridable via querystring -----
-DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "200000"))  # <= change
-DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "225000"))  # <= change
+DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "200000"))
+DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "225000"))
 
 # Central Indiana Counties (name -> county FIPS)
 CENTRAL_IN_COUNTIES = {
@@ -59,8 +56,8 @@ ACS_VARS = {
     "B25064_001E": "median_gross_rent",
 }
 
-# Some internal knobs
-MAX_MARKET_LOOKUPS_DEFAULT = 10  # cap DOM lookups per request
+# Internal knobs
+MAX_MARKET_LOOKUPS_DEFAULT = 10
 REQUEST_TIMEOUT = 30
 
 # -------------------------------------------------
@@ -84,13 +81,10 @@ def tract_id_human(tract_str: str) -> str:
     return f"{t[:4]}.{t[4:]}"
 
 def neighborhood_label(county_name: str, tract: str) -> str:
-    """
-    Very light heuristic for labeling "areas" consistently.
-    You can refine this as you wish. Used for grouping.
-    """
+    """Light heuristic for labeling areas consistently."""
     t = (tract or "").zfill(6)
     head = int(t[:2]) if t.isdigit() else 0
-    # Marion County (Indianapolis) quick bins
+    
     if county_name == "Marion":
         if head <= 10:
             return "Indianapolis – Eastside"
@@ -102,7 +96,7 @@ def neighborhood_label(county_name: str, tract: str) -> str:
             return "Indianapolis – Near Eastside/Downtown"
         else:
             return "Indianapolis – Outlying Areas"
-    # Anderson/Madison examples
+    
     if county_name == "Madison":
         if head <= 10:
             return "Anderson – Far West"
@@ -110,20 +104,17 @@ def neighborhood_label(county_name: str, tract: str) -> str:
             return "Anderson – East Side (North)"
         else:
             return "Anderson – East Side (Central)"
-    # Shelby, Johnson, etc.
+    
     return f"{county_name} County – Outlying Areas Subarea"
 
 # -------------------------------------------------
-# RapidAPI Market Stats (DOM) per ZIP with a small cache
+# RapidAPI Market Stats (DOM) with cache
 # -------------------------------------------------
 
 _dom_cache: Dict[str, Optional[int]] = {}
 
 def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
-    """
-    Minimal call to RapidAPI to get an approximate median Days on Market for a ZIP.
-    We cache results in-process to avoid rate/quotas.
-    """
+    """Get approximate median Days on Market for a ZIP."""
     if not zip_code:
         return {"median_days_on_market": None}
 
@@ -155,7 +146,6 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
         resp.raise_for_status()
         data = resp.json()
 
-        # naive median DOM: take available properties' dom if exposed, else None
         days = []
         props = (data or {}).get("data", {}).get("home_search", {}).get("results", []) or []
         for p in props:
@@ -164,9 +154,11 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
                    p.get("dom"))
             if isinstance(dom, int) and dom >= 0:
                 days.append(dom)
+        
         if not days:
             _dom_cache[zip_code] = None
             return {"median_days_on_market": None}
+        
         days.sort()
         median_dom = days[len(days)//2]
         _dom_cache[zip_code] = int(median_dom)
@@ -178,18 +170,12 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
         return {"median_days_on_market": None}
 
 # -------------------------------------------------
-# Very simple ZIP guesser by tract (placeholder heuristic)
-# (You can replace this with a real crosswalk if you have it)
+# ZIP guesser by tract (placeholder heuristic)
 # -------------------------------------------------
 
 def get_zip_for_tract(county_fips: str, tract: str) -> Optional[str]:
-    """
-    Heuristic ZIP guess based on leading digits.
-    Replace this with a proper tract->ZIP crosswalk when available.
-    """
-    # A few common ones used earlier
+    """Heuristic ZIP guess based on leading digits."""
     if county_fips == "097":  # Marion (Indianapolis)
-        # crude split by tract head
         head = int((tract or "000000").zfill(6)[:2])
         if head <= 15:
             return "46219"
@@ -204,48 +190,140 @@ def get_zip_for_tract(county_fips: str, tract: str) -> Optional[str]:
     return None
 
 # -------------------------------------------------
-# Scoring
+# NEW SCORING ALGORITHM - Buy Low, Sell High Strategy
 # -------------------------------------------------
 
-def score_tract(tract: Dict[str, Any], price_min: int, price_max: int) -> Dict[str, Any]:
+def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max: int) -> Dict[str, Any]:
     """
-    Compute a 0..100 score for a tract, with price alignment using [price_min, price_max].
-    Keep your other factors — vacancy/income/etc. — as you had them; this version
-    focuses on injecting the band cleanly.
+    Score based on ability to buy BELOW median and sell AT median.
+    
+    Key insight: You want neighborhoods where median home value is 
+    significantly ABOVE your purchase budget, indicating room for profit.
+    
+    Scoring factors:
+    - Gap Ratio (40%): Can you buy low and sell high?
+    - Vacancy (25%): Enough inventory without distress?
+    - Buyer Income (25%): Can buyers afford the median price?
+    - Market Velocity (10%): How fast do homes sell?
     """
     mhv = tract.get("median_home_value") or 0
     income = tract.get("median_income") or 0
     vacancy_pct = tract.get("vacancy_pct") or 0.0
-
-    # --- price-band alignment (1.0 inside band; linear decay outside) ---
+    dom = tract.get("days_on_market")
+    
+    # --- GAP RATIO SCORING (40% weight) ---
+    # Optimal: median is 1.3-1.4x your max purchase price
+    # This means you can buy distressed at your budget, rehab, sell at median
+    
     if mhv <= 0:
-        price_score = 0.0
-    elif mhv < price_min:
-        price_score = max(0.0, 1.0 - (price_min - mhv) / float(price_min))
-    elif mhv > price_max:
-        price_score = max(0.0, 1.0 - (mhv - price_max) / float(price_max))
+        gap_score = 0.0
+        gap_ratio = 0.0
     else:
-        price_score = 1.0
-
-    # --- vacancy: prefer ~12% (bargain + inventory) with broad tolerance ---
-    vacancy_score = clamp01(1.0 - abs((vacancy_pct - 12.0) / 18.0))
-
-    # --- income: prefer buyer incomes ~50–75k (you can tune) ---
-    income_score = clamp01(min(income / 75000.0, 1.0))
-
-    # Example weights (tune as needed)
-    W_PRICE = 0.45
-    W_VAC = 0.30
+        gap_ratio = mhv / price_max if price_max > 0 else 0
+        
+        if gap_ratio < 1.1:
+            # Median too close to budget - no profit margin
+            gap_score = 0.0
+        elif 1.1 <= gap_ratio <= 1.6:
+            # GOLDILOCKS ZONE
+            # Peak score at 1.35x (e.g., buy at $220k, sell at $297k)
+            ideal_ratio = 1.35
+            distance_from_ideal = abs(gap_ratio - ideal_ratio)
+            gap_score = clamp01(1.0 - (distance_from_ideal / 0.25))  # 0.25 is tolerance
+        else:
+            # Median too high - hard to compete even after rehab
+            # Declining score but not zero (still possible)
+            gap_score = clamp01(max(0.0, 1.0 - (gap_ratio - 1.6) * 0.5))
+    
+    # --- VACANCY SCORING (25% weight) ---
+    # Sweet spot: 8-15% vacancy
+    # Too low = no inventory, too high = distressed area
+    if 8.0 <= vacancy_pct <= 15.0:
+        vacancy_score = 1.0
+    else:
+        distance = min(abs(vacancy_pct - 8.0), abs(vacancy_pct - 15.0))
+        vacancy_score = clamp01(1.0 - (distance / 15.0))
+    
+    # --- BUYER INCOME SCORING (25% weight) ---
+    # Rule of thumb: buyers need income ~3-4x the median home value
+    # We'll use 3.5x as ideal
+    if mhv > 0:
+        ideal_income = mhv / 3.5
+        income_ratio = income / ideal_income if ideal_income > 0 else 0
+        # Score well if income is 80-120% of ideal
+        if 0.8 <= income_ratio <= 1.2:
+            income_score = 1.0
+        else:
+            income_score = clamp01(income_ratio) if income_ratio < 0.8 else clamp01(2.0 - income_ratio)
+    else:
+        income_score = 0.0
+    
+    # --- MARKET VELOCITY SCORING (10% weight) ---
+    # Faster sales = better market
+    if dom is not None and dom > 0:
+        if dom < 30:
+            velocity_score = 1.0  # Hot market
+        elif dom <= 60:
+            velocity_score = 0.7  # Normal market
+        elif dom <= 90:
+            velocity_score = 0.4  # Slower market
+        else:
+            velocity_score = 0.2  # Very slow
+    else:
+        velocity_score = 0.5  # Unknown, neutral score
+    
+    # --- WEIGHTED TOTAL ---
+    W_GAP = 0.40
+    W_VAC = 0.25
     W_INC = 0.25
-
-    total = W_PRICE * price_score + W_VAC * vacancy_score + W_INC * income_score
+    W_VEL = 0.10
+    
+    total = (
+        W_GAP * gap_score +
+        W_VAC * vacancy_score +
+        W_INC * income_score +
+        W_VEL * velocity_score
+    )
+    
     total_score = round(total * 100, 1)
-
+    
+    # Generate insights for why this score
+    insights = []
+    warnings = []
+    
+    if gap_ratio >= 1.3 and gap_ratio <= 1.4:
+        insights.append("Perfect buy-sell gap for profitable flips")
+    elif gap_ratio < 1.1:
+        warnings.append("Limited profit potential - median too close to budget")
+    elif gap_ratio > 1.7:
+        warnings.append("Median significantly above budget - verify distressed inventory exists")
+    
+    if 10 <= vacancy_pct <= 13:
+        insights.append("Healthy inventory levels")
+    elif vacancy_pct < 5:
+        warnings.append("Very low vacancy - limited deal flow")
+    elif vacancy_pct > 20:
+        warnings.append("High vacancy may indicate declining area")
+    
+    if income >= mhv / 3.5:
+        insights.append("Strong buyer income for resale")
+    elif income < mhv / 4.5:
+        warnings.append("Buyer income may limit resale market")
+    
+    if dom and dom < 40:
+        insights.append(f"Fast-moving market ({dom} days)")
+    elif dom and dom > 90:
+        warnings.append(f"Slower market ({dom} days to sell)")
+    
     return {
         "score": total_score,
-        "price_score": round(price_score * 100, 1),
+        "gap_ratio": round(gap_ratio, 2),
+        "gap_score": round(gap_score * 100, 1),
         "vacancy_score": round(vacancy_score * 100, 1),
         "income_score": round(income_score * 100, 1),
+        "velocity_score": round(velocity_score * 100, 1),
+        "insights": insights,
+        "warnings": warnings,
     }
 
 # -------------------------------------------------
@@ -265,30 +343,44 @@ def pop_weighted_avg(values: List[Tuple[Optional[float], int]]) -> Optional[floa
     return num / den
 
 def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Aggregate a list of tract dicts into one neighborhood dict."""
+    """Aggregate tract dicts into one neighborhood dict."""
     total_pop = sum(int(r.get("total_pop") or 0) for r in rows)
     med_home_val = pop_weighted_avg([(r.get("median_home_value"), r.get("total_pop") or 0) for r in rows])
     med_income   = pop_weighted_avg([(r.get("median_income"), r.get("total_pop") or 0) for r in rows])
     vac_pct      = pop_weighted_avg([(r.get("vacancy_pct"), r.get("total_pop") or 0) for r in rows])
     dom          = pop_weighted_avg([(r.get("days_on_market"), r.get("total_pop") or 0) for r in rows])
-
-    # population-weighted score
-    area_score   = pop_weighted_avg([(r.get("score"), r.get("total_pop") or 0) for r in rows])
-
-    # member tracts list for display
+    gap_ratio    = pop_weighted_avg([(r.get("gap_ratio"), r.get("total_pop") or 0) for r in rows])
+    
+    # Population-weighted score
+    area_score = pop_weighted_avg([(r.get("score"), r.get("total_pop") or 0) for r in rows])
+    
+    # Collect all insights and warnings
+    all_insights = []
+    all_warnings = []
+    for r in rows:
+        all_insights.extend(r.get("insights", []))
+        all_warnings.extend(r.get("warnings", []))
+    
+    # Deduplicate insights/warnings
+    unique_insights = list(set(all_insights))[:3]  # Top 3
+    unique_warnings = list(set(all_warnings))[:3]  # Top 3
+    
     members = [{
         "tract_id": r.get("tract_id"),
         "zip_code": r.get("zip_code"),
         "score": r.get("score")
     } for r in rows]
-
+    
     return {
         "median_home_value": round(med_home_val, 1) if med_home_val is not None else None,
         "median_income": round(med_income, 1) if med_income is not None else None,
         "vacancy_pct": round(vac_pct, 1) if vac_pct is not None else None,
         "days_on_market": int(dom) if dom is not None else None,
+        "gap_ratio": round(gap_ratio, 2) if gap_ratio is not None else None,
         "total_pop": total_pop,
         "score": round(area_score, 1) if area_score is not None else 0.0,
+        "insights": unique_insights,
+        "warnings": unique_warnings,
         "member_tracts": members,
         "tracts_count": len(rows),
     }
@@ -311,23 +403,21 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
 
     try:
         # --- params ---
-        top_n = int(req.params.get("top", "25"))
+        top_n = int(req.params.get("top", "999"))
         min_score = float(req.params.get("min_score", "0"))
         include_market_data = req.params.get("market_data", "false").lower() == "true"
         do_group = req.params.get("group", "").lower() == "neighborhood"
-
-        # NEW: price band (defaults to 200–225k but overrideable)
+        
         price_min = int(req.params.get("price_min", DEFAULT_PRICE_MIN))
         price_max = int(req.params.get("price_max", DEFAULT_PRICE_MAX))
         if price_min > price_max:
             price_min, price_max = price_max, price_min
-
-        # Optional cap for DOM lookups
+        
         max_market_lookups = min(int(req.params.get("max_market_lookups", MAX_MARKET_LOOKUPS_DEFAULT)), 50)
-
+        
         all_tracts: List[Dict[str, Any]] = []
         errors: List[str] = []
-
+        
         # --- pull ACS per county ---
         for county_name, county_fips in CENTRAL_IN_COUNTIES.items():
             try:
@@ -341,16 +431,16 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                 data = r.json()
                 headers = data[0]
                 rows = data[1:]
-
+                
                 for row in rows:
                     rec = dict(zip(headers, row))
-
+                    
                     total_housing = safe_int(rec.get("B25001_001E"))
                     vacant = safe_int(rec.get("B25002_003E"))
                     vacancy_pct = 0.0
                     if total_housing and vacant is not None and total_housing > 0:
                         vacancy_pct = (vacant / total_housing) * 100.0
-
+                    
                     tract = rec.get("tract")
                     tract_dict: Dict[str, Any] = {
                         "state": rec.get("state"),
@@ -367,25 +457,24 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                         "median_income": safe_int(rec.get("B19013_001E")),
                         "median_gross_rent": safe_int(rec.get("B25064_001E")),
                     }
-
-                    # score with the chosen price band
-                    scoring = score_tract(tract_dict, price_min=price_min, price_max=price_max)
+                    
+                    # NEW SCORING with buy-sell gap logic
+                    scoring = score_tract_flip_potential(tract_dict, price_min=price_min, price_max=price_max)
                     tract_dict.update(scoring)
-
+                    
                     all_tracts.append(tract_dict)
-
+            
             except Exception as e:
                 err = f"Error fetching {county_name}: {e}"
                 logging.error(err)
                 errors.append(err)
-
+        
         # --- filter and rank ---
         all_tracts.sort(key=lambda x: x["score"], reverse=True)
         filtered = [t for t in all_tracts if (t.get("score") or 0) >= min_score]
-
-        # optional: add market data (DOM) to the top K
+        
+        # optional: add market data (DOM)
         if include_market_data and RAPIDAPI_KEY:
-            # light throttle/cache
             looked = 0
             for t in filtered:
                 if looked >= max_market_lookups:
@@ -398,8 +487,8 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                     t["days_on_market"] = int(dom)
                     t["zip_code"] = zip_guess
                     looked += 1
-                time.sleep(0.15)  # gentle delay to avoid spikes
-
+                time.sleep(0.15)
+        
         if not do_group:
             top_opportunities = filtered[:top_n]
             result = {
@@ -424,13 +513,13 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                     "Access-Control-Allow-Headers": "Content-Type",
                 }
             )
-
-        # --- Group into neighborhoods (post-filter), aggregate ---
+        
+        # --- Group into neighborhoods ---
         groups: Dict[str, List[Dict[str, Any]]] = {}
         for t in filtered:
             key = f"{t.get('county_name')}|{t.get('neighborhood')}"
             groups.setdefault(key, []).append(t)
-
+        
         neighborhoods: List[Dict[str, Any]] = []
         for key, rows in groups.items():
             county_name, neigh = key.split("|", 1)
@@ -439,32 +528,28 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                 "county_name": county_name,
                 "neighborhood": neigh,
             })
-
-            # a small hint chip for subareas without a direct ZIP
+            
+            # ZIP hints
             if "Subarea" in neigh and not any(r.get("zip_code") for r in rows):
-                # show a tract-range hint
                 ids = sorted([r.get("tract_id", "") for r in rows if r.get("tract_id")])
                 if ids:
                     agg["label_hint"] = f"Tracts {ids[0].split('.')[0]}xx–{ids[-1].split('.')[0]}xx"
-
-            # zip guess chip if many members share one guess
+            
             zips = [r.get("zip_code") for r in rows if r.get("zip_code")]
             if not zips:
-                # try a guessed common zip
                 guesses = [get_zip_for_tract(r.get("county"), r.get("tract")) for r in rows]
                 guesses = [g for g in guesses if g]
                 if guesses:
-                    # take the mode-ish
                     guess = max(set(guesses), key=guesses.count)
                     conf = guesses.count(guess) / max(1, len(guesses))
                     agg["zip_guess"] = guess
                     agg["zip_confidence"] = round(conf, 3)
-
+            
             neighborhoods.append(agg)
-
+        
         neighborhoods.sort(key=lambda x: x.get("score", 0), reverse=True)
         top_areas = neighborhoods[:top_n]
-
+        
         result = {
             "status": "success",
             "total_tracts_analyzed": len(all_tracts),
@@ -479,7 +564,7 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             "price_band_used": {"min": price_min, "max": price_max},
             "errors": errors or None,
         }
-
+        
         return func.HttpResponse(
             json.dumps(result, indent=2),
             mimetype="application/json",
@@ -489,7 +574,7 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                 "Access-Control-Allow-Headers": "Content-Type",
             }
         )
-
+    
     except Exception as e:
         logging.exception("Analysis failed")
         return func.HttpResponse(
