@@ -286,14 +286,49 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     gap_ratio    = pop_weighted_avg([(r.get("gap_ratio"), r.get("total_pop") or 0) for r in rows])
     area_score   = pop_weighted_avg([(r.get("score"), r.get("total_pop") or 0) for r in rows])
 
-    all_insights, all_warnings = [], []
-    for r in rows:
-        all_insights.extend(r.get("insights", []))
-        all_warnings.extend(r.get("warnings", []))
-    unique_insights = list(set(all_insights))[:3]
-    unique_warnings = list(set(all_warnings))[:3]
+    # 👉 Derive messages from the aggregated metrics (not by unioning tract messages)
+    insights: List[str] = []
+    warnings: List[str] = []
 
-    members = [{"tract_id": r.get("tract_id"), "zip_code": r.get("zip_code"), "score": r.get("score")} for r in rows]
+    if gap_ratio is not None:
+        if 1.3 <= gap_ratio <= 1.4:
+            insights.append("Perfect buy-sell gap for profitable flips")
+        elif gap_ratio < 1.1:
+            warnings.append("Limited profit potential — median too close to budget")
+        elif gap_ratio > 1.7:
+            warnings.append("Median significantly above budget — verify distressed inventory exists")
+
+    if vac_pct is not None:
+        if 8.0 <= vac_pct <= 15.0:
+            insights.append("Healthy inventory levels")
+        elif vac_pct < 5.0:
+            warnings.append("Very low vacancy — limited deal flow")
+        elif vac_pct > 20.0:
+            warnings.append("High vacancy may indicate declining area")
+
+    if med_home_val and med_income:
+        ideal_income = med_home_val / 3.5
+        ratio = (med_income / ideal_income) if ideal_income else 0
+        if ratio >= 1.0:
+            insights.append("Strong buyer income for resale")
+        elif ratio < 0.8:
+            warnings.append("Buyer income may limit resale market")
+
+    if dom is not None:
+        if dom < 40:
+            insights.append(f"Fast-moving market ({int(dom)} days)")
+        elif dom > 90:
+            warnings.append(f"Slower market ({int(dom)} days to sell)")
+
+    # Keep cards concise
+    insights = insights[:3]
+    warnings = warnings[:3]
+
+    members = [{
+        "tract_id": r.get("tract_id"),
+        "zip_code": r.get("zip_code"),
+        "score": r.get("score")
+    } for r in rows]
 
     return {
         "median_home_value": round(med_home_val, 1) if med_home_val is not None else None,
@@ -303,8 +338,8 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "gap_ratio": round(gap_ratio, 2) if gap_ratio is not None else None,
         "total_pop": total_pop,
         "score": round(area_score, 1) if area_score is not None else 0.0,
-        "insights": unique_insights,
-        "warnings": unique_warnings,
+        "insights": insights,
+        "warnings": warnings,
         "member_tracts": members,
         "tracts_count": len(rows),
     }

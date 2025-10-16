@@ -18,31 +18,21 @@
       --shadow: 0 8px 30px rgba(0,0,0,.12);
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
-      color: var(--text);
-      background: linear-gradient(180deg, var(--bg1), var(--bg2)) fixed;
-      min-height: 100vh;
-    }
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans";
+      color: var(--text); background: linear-gradient(180deg, var(--bg1), var(--bg2)) fixed; min-height: 100vh; }
     .container { max-width: 1060px; margin: 32px auto; padding: 0 16px; }
 
-    /* Header */
     .header { background: #fff; border-radius: 16px; padding: 18px 20px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 12px; }
     .header h1 { margin: 0; font-size: 28px; }
     .header p { margin: 2px 0 0; color: var(--muted); }
 
-    /* Scoring explainer */
     .explain { margin-top: 16px; background: #fff7ed; border: 1px solid #fed7aa; color: #7c2d12; border-radius: 14px; padding: 16px; }
     .explain h3 { margin: 0 0 8px; font-size: 16px; }
     .explain .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
     .tile { background: #fff; border-radius: 10px; padding: 10px; border: 1px solid #fde68a; }
 
-    /* Controls */
-    .controls {
-      margin-top: 18px; background: #fff; border-radius:16px; padding:16px; box-shadow: var(--shadow);
-      display:grid; grid-template-columns: repeat(12, 1fr); gap: 12px; align-items:end;
-    }
+    .controls { margin-top: 18px; background:#fff; border-radius:16px; padding:16px; box-shadow: var(--shadow);
+      display:grid; grid-template-columns: repeat(12, 1fr); gap: 12px; align-items:end; }
     .form-group { grid-column: span 3; }
     .form-group.rehab { grid-column: span 3; }
     .form-label { display:block; font-size: 12px; color: #334155; margin-bottom: 6px; }
@@ -54,19 +44,16 @@
     #analyzeBtn { width: 100%; background:#4f46e5; color:#fff; border:none; border-radius:12px; padding:12px 14px; font-weight:600; cursor:pointer; }
     #analyzeBtn:disabled { opacity:.6; cursor:not-allowed; }
 
-    /* Banners & Loading */
     .banner { margin-top:16px; padding:14px; border-radius:14px; background:#fff; }
     .loading { display:flex; gap:12px; align-items:center; }
     .spinner { width:18px; height:18px; border:3px solid #e5e7eb; border-top-color:#4f46e5; border-radius:50%; animation:spin 1s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
 
-    /* Summary */
     .summary { margin-top:18px; display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:10px; }
     .summary-item { background:#ffffff; border-radius:12px; padding:12px; box-shadow: var(--shadow); text-align:center;}
     .summary-label { color:var(--muted); font-size:12px; }
     .summary-value { font-size:18px; font-weight:700; margin-top:4px; }
 
-    /* Results grid */
     .results { margin-top:14px; display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:14px; }
     .tract-card { position:relative; background:#ffffff; border-radius:16px; padding:14px; box-shadow: var(--shadow); }
     .score-badge { position:absolute; top:-10px; right:-10px; width:62px; height:62px; border-radius:50%; background:#e5e7eb; color:#111827; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:800; }
@@ -89,7 +76,6 @@
     .info-label { color:#475569; }
     .info-value { font-weight:700; }
 
-    /* Collapsible blocks */
     details.block { border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:#fff; margin-top:10px; }
     details.block + details.block { margin-top:8px; }
     details.block > summary { list-style:none; cursor:pointer; font-weight:700; }
@@ -121,7 +107,7 @@
     </div>
 
     <div class="explain">
-      <h3>🟡 How Areas Are Scored (0–100 points)</h3>
+      <h3>🧮 How Areas Are Scored (0–100 points)</h3>
       <div class="grid">
         <div class="tile"><strong>Buy-Sell Gap (40%)</strong><br/>Best when median value is ~1.3–1.4× your max purchase price.</div>
         <div class="tile"><strong>Vacancy Rate (25%)</strong><br/>8–15% suggests healthy inventory without distress.</div>
@@ -154,7 +140,7 @@
     </div>
 
     <div id="results" class="banner">
-      <div class="loading"><div class="spinner"></div><p>Ready to analyze neighborhoods…</p></div>
+      <div class="loading"><div class="spinner"></div><p>Set your inputs, then click “Find Best Areas”.</p></div>
     </div>
   </div>
 
@@ -204,6 +190,8 @@
           throw new Error(data.message || 'API returned an error.');
         }
 
+        // 👉 Add a small, deliberate pause so users see the "working" state.
+        await new Promise(r => setTimeout(r, 600));
         displayResults(data, rehabBudget);
       } catch (err) {
         console.error(err);
@@ -288,7 +276,6 @@
         if(grouped && item.label_hint) chips.push(`<span class="chip-hint">${item.label_hint}</span>`);
         const helpersRow = chips.length ? `<div class="chips">${chips.join('')}</div>` : '';
 
-        /* Keep the always-visible part SMALL: median home value + maybe DOM */
         const domRow = (item.days_on_market!=null)
           ? `<div class="info-row"><span class="info-label">Avg. Days on Market</span><span class="info-value">${item.days_on_market} days</span></div>`
           : '';
@@ -297,7 +284,6 @@
           ${domRow}
         `;
 
-        /* Collapsible sections */
         let flipCalc = '';
         if(item.median_home_value && item.gap_ratio){
           const purchaseEst = Math.round(item.median_home_value / item.gap_ratio);
@@ -342,9 +328,6 @@
       html += '</div>';
       resultsDiv.innerHTML = html;
     }
-
-    // Run once on load
-    window.addEventListener('load', () => setTimeout(() => analyzeNeighborhoods(), 200));
   </script>
 </body>
 </html>
