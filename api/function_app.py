@@ -334,7 +334,7 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("Starting neighborhood analysis")
 
     try:
-        top_n = int(req.params.get("top", "999"))
+        top_n = min(int(req.params.get("top", "50")), 100)  # Cap at 100 max
         min_score = float(req.params.get("min_score", "0"))
         include_market_data = req.params.get("market_data", "false").lower() == "true"
         do_group = req.params.get("group", "").lower() == "neighborhood"
