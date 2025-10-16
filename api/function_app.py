@@ -46,7 +46,7 @@ ACS_VARS = {
 }
 
 MAX_MARKET_LOOKUPS_DEFAULT = 10
-REQUEST_TIMEOUT = 30
+REQUEST_TIMEOUT = 60
 
 _dom_cache: Dict[str, Optional[int]] = {}
 
