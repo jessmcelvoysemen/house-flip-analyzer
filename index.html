@@ -310,6 +310,8 @@
 <script>
   const API_URL = '/api/analyze';
 
+  function bool01(v) { return v ? '1' : '0'; }
+
   async function analyzeNeighborhoods() {
     const resultsDiv = document.getElementById('results');
     const analyzeBtn = document.getElementById('analyzeBtn');
@@ -321,26 +323,39 @@
 
     analyzeBtn.disabled = true;
     resultsDiv.innerHTML =
-      '<div class="loading">' +
-        '<div class="spinner"></div>' +
-        '<p>Analyzing neighborhoods...</p>' +
-      '</div>';
+      '<div class="loading"><div class="spinner"></div><p>Analyzing neighborhoods...</p></div>';
 
     try {
-      let url = API_URL
-        + '?top=50'  // Changed from 999 to 50
-        + '&min_score=0'
-        + '&price_min=' + encodeURIComponent(minPrice)
-        + '&price_max=' + encodeURIComponent(maxPrice);
+      // Build query safely (prevents missing & / typos)
+      const params = new URLSearchParams({
+        top: '50',                 // client cap (server should also cap)
+        min_score: '0',
+        price_min: String(minPrice),
+        price_max: String(maxPrice),
+        marketdata: bool01(includeMarketData),        // expected by backend
+        groupneighborhood: bool01(groupNeighborhoods) // expected by backend
+      });
 
-      if (includeMarketData) url += '&market_data=true';
-      if (groupNeighborhoods) url += '&group=neighborhood';
+      const url = `${API_URL}?${params.toString()}`;
 
-      const response = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' }});
-      if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + response.statusText);
+      // Optional request timeout
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 60000);
 
-      const data = await response.json();
-      if (data.status === 'error') throw new Error(data.message);
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      clearTimeout(timer);
+
+      const raw = await res.text();
+      let data;
+      try { data = JSON.parse(raw); } catch { /* keep raw text */ }
+
+      if (!res.ok) {
+        const msg = (data && (data.error || data.message)) || raw || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      if (data && data.status === 'error') {
+        throw new Error(data.message || 'API returned an error.');
+      }
 
       displayResults(data);
     } catch (err) {
@@ -349,13 +364,14 @@
         '<div class="error">' +
           '<h3 style="margin-bottom:10px;">⚠️ Error Loading Data</h3>' +
           '<p><strong>Error:</strong> ' + (err.message || err) + '</p>' +
-          '<p style="margin-top:15px; font-size:14px;">Try refreshing the page. If this persists, contact support.</p>' +
+          '<p style="margin-top:15px; font-size:14px;">Try again. If it persists, ensure params match the API (marketdata/groupneighborhood) and check App Insights.</p>' +
         '</div>';
     } finally {
       analyzeBtn.disabled = false;
     }
   }
 
+  // ===== existing helpers unchanged =====
   function getScoreClass(score) {
     if (score >= 80) return 'excellent';
     if (score >= 70) return 'very-good';
@@ -363,7 +379,6 @@
     if (score >= 30) return 'fair';
     return 'poor';
   }
-
   function getScoreLabel(score) {
     if (score >= 80) return 'Excellent';
     if (score >= 70) return 'Very Good';
@@ -371,74 +386,38 @@
     if (score >= 30) return 'Fair';
     return 'Poor';
   }
-
   function getGapChip(gapRatio) {
     if (!gapRatio) return '';
-    
-    let chipClass = 'chip-gap';
-    let label = '';
-    
-    if (gapRatio >= 1.25 && gapRatio <= 1.45) {
-      chipClass += ' excellent';
-      label = '🎯 Perfect Gap: ' + gapRatio + 'x';
-    } else if (gapRatio >= 1.15 && gapRatio < 1.25) {
-      chipClass += ' good';
-      label = '✓ Good Gap: ' + gapRatio + 'x';
-    } else if (gapRatio < 1.15) {
-      chipClass += ' warning';
-      label = '⚠ Tight Margin: ' + gapRatio + 'x';
-    } else {
-      chipClass += ' good';
-      label = 'Gap: ' + gapRatio + 'x';
-    }
-    
+    let chipClass = 'chip-gap'; let label = '';
+    if (gapRatio >= 1.25 && gapRatio <= 1.45) { chipClass += ' excellent'; label = '🎯 Perfect Gap: ' + gapRatio + 'x'; }
+    else if (gapRatio >= 1.15 && gapRatio < 1.25) { chipClass += ' good'; label = '✓ Good Gap: ' + gapRatio + 'x'; }
+    else if (gapRatio < 1.15) { chipClass += ' warning'; label = '⚠ Tight Margin: ' + gapRatio + 'x'; }
+    else { chipClass += ' good'; label = 'Gap: ' + gapRatio + 'x'; }
     return '<span class="' + chipClass + '">' + label + '</span>';
   }
 
   function displayResults(data) {
     const resultsDiv = document.getElementById('results');
     const grouped = Boolean(data.grouped_by_neighborhood) || !!data.neighborhoods;
-
     const items = grouped ? (data.neighborhoods || []) : (data.opportunities || []);
     if (!items.length) {
       resultsDiv.innerHTML =
-        '<div class="empty">' +
-          '<h2>No areas found</h2>' +
-          '<p style="margin-top:10px;">Try adjusting your budget range</p>' +
-        '</div>';
+        '<div class="empty"><h2>No areas found</h2><p style="margin-top:10px;">Try adjusting your budget range</p></div>';
       return;
     }
 
     let html = '';
-
     var band = (data.price_band_used && data.price_band_used.min != null)
       ? ('$' + Number(data.price_band_used.min).toLocaleString() + '–$' + Number(data.price_band_used.max).toLocaleString())
       : null;
 
     html +=
       '<div class="summary">' +
-        '<div class="summary-item">' +
-          '<div class="summary-label">Tracts Analyzed</div>' +
-          '<div class="summary-value">' + (data.total_tracts_analyzed || 0) + '</div>' +
-        '</div>' +
-        '<div class="summary-item">' +
-          '<div class="summary-label">Areas Found</div>' +
-          '<div class="summary-value">' + (data.summary.total_meeting_criteria || 0) + '</div>' +
-        '</div>' +
-        '<div class="summary-item">' +
-          '<div class="summary-label">Best Score</div>' +
-          '<div class="summary-value">' + (data.summary.top_score || 0) + '/100</div>' +
-        '</div>' +
-        '<div class="summary-item">' +
-          '<div class="summary-label">Average Score</div>' +
-          '<div class="summary-value">' + (data.summary.avg_score || 0) + '/100</div>' +
-        '</div>' +
-        (band ? (
-          '<div class="summary-item">' +
-            '<div class="summary-label">Your Purchase Budget</div>' +
-            '<div class="summary-value">' + band + '</div>' +
-          '</div>'
-        ) : '') +
+        '<div class="summary-item"><div class="summary-label">Tracts Analyzed</div><div class="summary-value">' + (data.total_tracts_analyzed || 0) + '</div></div>' +
+        '<div class="summary-item"><div class="summary-label">Areas Found</div><div class="summary-value">' + (data.summary?.total_meeting_criteria || 0) + '</div></div>' +
+        '<div class="summary-item"><div class="summary-label">Best Score</div><div class="summary-value">' + (data.summary?.top_score || 0) + '/100</div></div>' +
+        '<div class="summary-item"><div class="summary-label">Average Score</div><div class="summary-value">' + (data.summary?.avg_score || 0) + '/100</div></div>' +
+        (band ? ('<div class="summary-item"><div class="summary-label">Your Purchase Budget</div><div class="summary-value">' + band + '</div></div>') : '') +
       '</div>';
 
     html += '<div class="results">';
@@ -446,7 +425,6 @@
     items.forEach(function(item, idx) {
       const scoreClass = getScoreClass(item.score || 0);
       const scoreLabel = getScoreLabel(item.score || 0);
-      
       var nameForTitle = item.neighborhood || 'Neighborhood';
       if (grouped && /–\s*Subarea$/i.test(nameForTitle) && item.zip_guess) {
         nameForTitle = nameForTitle.replace(/–\s*Subarea$/i, '– ' + item.zip_guess);
@@ -458,22 +436,14 @@
       if (grouped && item.tracts_count != null) subParts.push(item.tracts_count + ' areas combined');
       var subtitle = subParts.join(' • ');
 
-      var helpersRow = '';
       var chips = [];
-      
-      if (item.gap_ratio) {
-        chips.push(getGapChip(item.gap_ratio));
-      }
-      
+      if (item.gap_ratio) chips.push(getGapChip(item.gap_ratio));
       if (grouped && item.zip_guess && !item.zip_code) {
         var conf = (item.zip_confidence != null) ? ' (' + Math.round(item.zip_confidence*100) + '% match)' : '';
         chips.push('<span class="chip-zip">ZIP: ' + item.zip_guess + conf + '</span>');
       }
-      if (grouped && item.label_hint) {
-        chips.push('<span class="chip-hint">' + item.label_hint + '</span>');
-      }
-      
-      if (chips.length) helpersRow = '<div class="chips">' + chips.join('') + '</div>';
+      if (grouped && item.label_hint) chips.push('<span class="chip-hint">' + item.label_hint + '</span>');
+      var helpersRow = chips.length ? '<div class="chips">' + chips.join('') + '</div>' : '';
 
       function fmtMoney(x){ return x ? ('$' + Number(x).toLocaleString()) : 'N/A'; }
       function fmtPct(x){ return (x != null) ? (Number(x).toFixed(1) + '%') : 'N/A'; }
@@ -486,15 +456,14 @@
         const rehabEst = 40000;
         const profitEst = sellEst - purchaseEst - rehabEst;
         const roiEst = ((profitEst / (purchaseEst + rehabEst)) * 100).toFixed(1);
-        
-        flipCalc = 
+        flipCalc =
           '<div class="flip-potential">' +
             '<div class="flip-potential-title">💵 Estimated Flip Potential</div>' +
             '<div class="flip-potential-calc">' +
               'Buy distressed: <strong>~' + fmtMoney(purchaseEst) + '</strong><br>' +
               'Rehab budget: <strong>~$40,000</strong> (adjust for actual)<br>' +
               'Sell at median: <strong>' + fmtMoney(sellEst) + '</strong><br>' +
-              'Est. Profit: <strong style="color: ' + (profitEst > 0 ? '#16a34a' : '#dc2626') + ';">' + fmtMoney(profitEst) + '</strong> (' + roiEst + '% ROI)' +
+              'Est. Profit: <strong style="color:' + (profitEst > 0 ? '#16a34a' : '#dc2626') + ';">' + fmtMoney(profitEst) + '</strong> (' + roiEst + '% ROI)' +
             '</div>' +
           '</div>';
       }
@@ -509,67 +478,41 @@
       }
 
       var baseRows =
-        '<div class="info-row">' +
-          '<span class="info-label">Median Home Value</span>' +
-          '<span class="info-value">' + fmtMoney(item.median_home_value) + '</span>' +
-        '</div>' +
-        '<div class="info-row">' +
-          '<span class="info-label">Median Household Income</span>' +
-          '<span class="info-value">' + fmtMoney(item.median_income) + '</span>' +
-        '</div>' +
-        '<div class="info-row">' +
-          '<span class="info-label">Vacancy Rate</span>' +
-          '<span class="info-value">' + fmtPct(item.vacancy_pct) + '</span>' +
-        '</div>' +
-        '<div class="info-row">' +
-          '<span class="info-label">' + (grouped ? 'Total Population' : 'Population') + '</span>' +
-          '<span class="info-value">' + fmtInt(item.total_pop) + '</span>' +
-        '</div>' +
+        '<div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">' + fmtMoney(item.median_home_value) + '</span></div>' +
+        '<div class="info-row"><span class="info-label">Median Household Income</span><span class="info-value">' + fmtMoney(item.median_income) + '</span></div>' +
+        '<div class="info-row"><span class="info-label">Vacancy Rate</span><span class="info-value">' + fmtPct(item.vacancy_pct) + '</span></div>' +
+        '<div class="info-row"><span class="info-label">' + (grouped ? 'Total Population' : 'Population') + '</span><span class="info-value">' + fmtInt(item.total_pop) + '</span></div>' +
         domRow;
 
       var whySection = '';
       const insights = item.insights || [];
       const warnings = item.warnings || [];
-      
       if (insights.length || warnings.length) {
-        whySection = '<div class="why-section">' +
-          '<div class="why-title">💡 Why This Area:</div>' +
-          '<div class="why-list">';
-        
-        insights.forEach(function(insight) {
-          whySection += '<div class="why-item"><span class="why-icon">✓</span><span>' + insight + '</span></div>';
-        });
-        
-        warnings.forEach(function(warning) {
-          whySection += '<div class="why-item"><span class="why-icon warning">!</span><span>' + warning + '</span></div>';
-        });
-        
+        whySection = '<div class="why-section"><div class="why-title">💡 Why This Area:</div><div class="why-list">';
+        insights.forEach(function(s){ whySection += '<div class="why-item"><span class="why-icon">✓</span><span>' + s + '</span></div>'; });
+        warnings.forEach(function(w){ whySection += '<div class="why-item"><span class="why-icon warning">!</span><span>' + w + '</span></div>'; });
         whySection += '</div></div>';
       }
 
-      html +=
+      let htmlCard =
         '<div class="tract-card">' +
-          '<div class="score-badge ' + scoreClass + '">' +
-            '<div>' + (item.score != null ? item.score : '–') + '</div>' +
-            '<div class="score-label">' + scoreLabel + '</div>' +
-          '</div>' +
+          '<div class="score-badge ' + scoreClass + '"><div>' + (item.score != null ? item.score : '–') + '</div><div class="score-label">' + scoreLabel + '</div></div>' +
           '<div class="tract-title">' + title + '</div>' +
           '<div class="tract-sub">' + subtitle + '</div>' +
           helpersRow +
           flipCalc +
           '<div class="tract-info">' + baseRows + '</div>' +
           whySection +
-          (grouped && item.member_tracts && item.member_tracts.length ?
-            ('<div class="reasons" style="margin-top:10px; font-size:12px; color:#a0aec0;">' +
-               '<div class="reasons-title">Includes census tracts:</div>' +
-               '<div class="reason">' +
-                 item.member_tracts.slice(0,6).map(function(m){return m.tract_id;}).join(', ') +
-                 (item.member_tracts.length > 6 ? '…' : '') +
-               '</div>' +
-             '</div>')
-           : ''
+          (grouped && item.member_tracts && item.member_tracts.length
+            ? ('<div class="reasons" style="margin-top:10px; font-size:12px; color:#a0aec0;">' +
+                 '<div class="reasons-title">Includes census tracts:</div>' +
+                 '<div class="reason">' + item.member_tracts.slice(0,6).map(m => m.tract_id).join(", ") + (item.member_tracts.length > 6 ? '…' : '') + '</div>' +
+               '</div>')
+            : ''
           ) +
         '</div>';
+
+      html += htmlCard;
     });
 
     html += '</div>';
