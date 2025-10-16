@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import azure.functions as func
 import requests
@@ -48,6 +48,9 @@ ACS_VARS = {
 MAX_MARKET_LOOKUPS_DEFAULT = 10
 REQUEST_TIMEOUT = 60
 
+# Caching
+_census_cache: Dict[str, Dict[str, Any]] = {}
+CACHE_DURATION_HOURS = 24
 _dom_cache: Dict[str, Optional[int]] = {}
 
 def safe_int(x: Any) -> Optional[int]:
@@ -71,25 +74,135 @@ def neighborhood_label(county_name: str, tract: str) -> str:
     
     if county_name == "Marion":
         if head <= 10:
-            return "Indianapolis – Eastside"
+            return "Indianapolis — Eastside"
         elif head <= 20:
-            return "Indianapolis – South/Southeast"
+            return "Indianapolis — South/Southeast"
         elif head <= 30:
-            return "Indianapolis – Far Eastside"
+            return "Indianapolis — Far Eastside"
         elif head <= 40:
-            return "Indianapolis – Near Eastside/Downtown"
+            return "Indianapolis — Near Eastside/Downtown"
         else:
-            return "Indianapolis – Outlying Areas"
+            return "Indianapolis — Outlying Areas"
     
     if county_name == "Madison":
         if head <= 10:
-            return "Anderson – Far West"
+            return "Anderson — Far West"
         elif head <= 20:
-            return "Anderson – East Side (North)"
+            return "Anderson — East Side (North)"
         else:
-            return "Anderson – East Side (Central)"
+            return "Anderson — East Side (Central)"
     
-    return f"{county_name} County – Outlying Areas Subarea"
+    return f"{county_name} County — Outlying Areas Subarea"
+
+# === CENSUS DATA CACHING ===
+
+def get_cached_census_data(county_fips: str) -> Optional[List[List[str]]]:
+    """Retrieve cached census data if still valid."""
+    if county_fips not in _census_cache:
+        return None
+    
+    cache_entry = _census_cache[county_fips]
+    cache_time = datetime.fromisoformat(cache_entry["cached_at"])
+    age = datetime.utcnow() - cache_time
+    
+    if age > timedelta(hours=CACHE_DURATION_HOURS):
+        logging.info(f"Cache expired for county {county_fips}")
+        del _census_cache[county_fips]
+        return None
+    
+    age_hours = age.total_seconds() / 3600
+    logging.info(f"✅ Using cached data for county {county_fips} (age: {age_hours:.1f}h)")
+    return cache_entry["data"]
+
+def cache_census_data(county_fips: str, data: List[List[str]]) -> None:
+    """Store census data in cache with timestamp."""
+    _census_cache[county_fips] = {
+        "data": data,
+        "cached_at": datetime.utcnow().isoformat()
+    }
+    logging.info(f"💾 Cached data for county {county_fips}")
+
+def fetch_census_data_with_retry(
+    county_name: str, 
+    county_fips: str, 
+    max_retries: int = 3
+) -> Optional[List[List[str]]]:
+    """
+    Fetch census data with exponential backoff retry logic.
+    """
+    # Check cache first
+    cached_data = get_cached_census_data(county_fips)
+    if cached_data is not None:
+        return cached_data
+    
+    params = {
+        "get": ",".join(ACS_VARS.keys()),
+        "for": "tract:*",
+        "in": f"state:18 county:{county_fips}",
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            current_timeout = REQUEST_TIMEOUT * (attempt + 1)
+            
+            logging.info(
+                f"🌐 Fetching {county_name} County (attempt {attempt + 1}/{max_retries}, "
+                f"timeout={current_timeout}s)"
+            )
+            
+            response = requests.get(
+                ACS_BASE, 
+                params=params, 
+                timeout=current_timeout
+            )
+            
+            if response.status_code == 503:
+                logging.warning(f"⚠️ Census API temporarily unavailable for {county_name} (503)")
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logging.info(f"⏳ Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    return None
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            if not data or len(data) < 2:
+                logging.warning(f"⚠️ Empty or invalid data for {county_name}")
+                return None
+            
+            logging.info(f"✅ Successfully fetched {county_name} with {len(data)-1} tracts")
+            
+            # Cache successful fetch
+            cache_census_data(county_fips, data)
+            
+            return data
+            
+        except requests.exceptions.Timeout:
+            logging.warning(
+                f"⏱️ Timeout fetching {county_name} on attempt {attempt + 1}/{max_retries}"
+            )
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                logging.info(f"⏳ Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+            else:
+                logging.error(f"❌ All retries exhausted for {county_name}")
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            logging.error(f"❌ Request error for {county_name}: {e}")
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                time.sleep(wait_time)
+            else:
+                return None
+    
+    return None
+
+# === MARKET DATA ===
 
 def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
     if not zip_code:
@@ -157,6 +270,8 @@ def get_zip_for_tract(county_fips: str, tract: str) -> Optional[str]:
     if county_fips == "145":
         return "46176"
     return None
+
+# === SCORING ALGORITHM ===
 
 def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max: int) -> Dict[str, Any]:
     mhv = tract.get("median_home_value") or 0
@@ -259,6 +374,8 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
         "warnings": warnings,
     }
 
+# === AGGREGATION ===
+
 def pop_weighted_avg(values: List[Tuple[Optional[float], int]]) -> Optional[float]:
     num = 0.0
     den = 0
@@ -310,7 +427,8 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "tracts_count": len(rows),
     }
 
-# CORS headers
+# === HTTP ENDPOINTS ===
+
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -319,22 +437,29 @@ CORS_HEADERS = {
 
 @app.route(route="health", methods=["GET"])
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
+    cache_status = {
+        "census_counties_cached": len(_census_cache),
+        "dom_zips_cached": len(_dom_cache)
+    }
     return func.HttpResponse(
-        json.dumps({"status": "ok", "ts": datetime.utcnow().isoformat()}),
+        json.dumps({
+            "status": "ok",
+            "ts": datetime.utcnow().isoformat(),
+            "cache": cache_status
+        }),
         mimetype="application/json",
         headers=CORS_HEADERS
     )
 
 @app.route(route="analyze", methods=["GET", "POST", "OPTIONS"])
 def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
-    # Handle OPTIONS preflight
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=200, headers=CORS_HEADERS)
     
-    logging.info("Starting neighborhood analysis")
+    logging.info("🚀 Starting neighborhood analysis")
 
     try:
-        top_n = min(int(req.params.get("top", "50")), 100)  # Cap at 100 max
+        top_n = min(int(req.params.get("top", "50")), 100)
         min_score = float(req.params.get("min_score", "0"))
         include_market_data = req.params.get("market_data", "false").lower() == "true"
         do_group = req.params.get("group", "").lower() == "neighborhood"
@@ -348,17 +473,19 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
         
         all_tracts: List[Dict[str, Any]] = []
         errors: List[str] = []
+        successful_counties = 0
+        failed_counties = 0
         
         for county_name, county_fips in CENTRAL_IN_COUNTIES.items():
+            data = fetch_census_data_with_retry(county_name, county_fips)
+            
+            if data is None:
+                error_msg = f"Failed to fetch {county_name} after retries"
+                errors.append(error_msg)
+                failed_counties += 1
+                continue
+            
             try:
-                params = {
-                    "get": ",".join(ACS_VARS.keys()),
-                    "for": "tract:*",
-                    "in": f"state:18 county:{county_fips}",
-                }
-                r = requests.get(ACS_BASE, params=params, timeout=REQUEST_TIMEOUT)
-                r.raise_for_status()
-                data = r.json()
                 headers = data[0]
                 rows = data[1:]
                 
@@ -392,11 +519,31 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                     tract_dict.update(scoring)
                     
                     all_tracts.append(tract_dict)
+                
+                successful_counties += 1
             
             except Exception as e:
-                err = f"Error fetching {county_name}: {e}"
+                err = f"Error processing {county_name}: {e}"
                 logging.error(err)
                 errors.append(err)
+                failed_counties += 1
+        
+        logging.info(
+            f"📊 Census fetch complete: {successful_counties} succeeded, {failed_counties} failed"
+        )
+        
+        if not all_tracts and failed_counties > 0:
+            return func.HttpResponse(
+                json.dumps({
+                    "status": "error",
+                    "message": "Census API is currently unavailable",
+                    "errors": errors,
+                    "hint": "The US Census Bureau's API is experiencing issues. Please try again in a few minutes."
+                }),
+                status_code=503,
+                mimetype="application/json",
+                headers=CORS_HEADERS
+            )
         
         all_tracts.sort(key=lambda x: x["score"], reverse=True)
         filtered = [t for t in all_tracts if (t.get("score") or 0) >= min_score]
@@ -486,6 +633,8 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             "errors": errors or None,
         }
         
+        logging.info(f"✅ Analysis complete, returning {len(top_areas)} neighborhoods")
+        
         return func.HttpResponse(
             json.dumps(result, indent=2),
             mimetype="application/json",
@@ -493,7 +642,7 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
         )
     
     except Exception as e:
-        logging.exception("Analysis failed")
+        logging.exception("❌ Analysis failed")
         return func.HttpResponse(
             json.dumps({
                 "status": "error",
