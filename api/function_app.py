@@ -54,8 +54,15 @@ CACHE_DURATION_HOURS = 24
 _dom_cache: Dict[str, Optional[int]] = {}
 
 def safe_int(x: Any) -> Optional[int]:
+    """Convert to int, treating Census sentinel values (negatives) as None"""
     try:
-        return int(float(x))
+        val = int(float(x))
+        # Census API uses large negative numbers as sentinel "N/A" values
+        # Common ones: -666666666, -222222222, -999999999, -888888888
+        # Treat any negative as missing data
+        if val < 0:
+            return None
+        return val
     except Exception:
         return None
 
@@ -272,16 +279,16 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     total_score = round(total * 100, 1)
 
     insights, warnings = [], []
-    if 1.3 <= gap_ratio <= 1.4: insights.append("Perfect buy-sell gap for profitable flips")
-    elif gap_ratio < 1.1: warnings.append("Limited profit potential - median too close to budget")
-    elif gap_ratio > 1.7: warnings.append("Median significantly above budget - verify distressed inventory exists")
-    if 10 <= vacancy_pct <= 13: insights.append("Healthy inventory levels")
-    elif vacancy_pct < 5: warnings.append("Very low vacancy - limited deal flow")
-    elif vacancy_pct > 20: warnings.append("High vacancy may indicate declining area")
-    if income >= mhv/3.5: insights.append("Strong buyer income for resale")
-    elif income < mhv/4.5: warnings.append("Buyer income may limit resale market")
-    if dom and dom < 40: insights.append(f"Fast-moving market ({dom} days)")
-    elif dom and dom > 90: warnings.append(f"Slower market ({dom} days to sell)")
+    if 1.3 <= gap_ratio <= 1.4: insights.append("💰 Sweet profit margin - perfect for flips!")
+    elif gap_ratio < 1.1: warnings.append("⚠️ Margins too tight - not much profit room")
+    elif gap_ratio > 1.7: warnings.append("🤔 Median's pretty high - make sure fixer-uppers exist!")
+    if 10 <= vacancy_pct <= 13: insights.append("🏚️ Good supply of houses to choose from")
+    elif vacancy_pct < 5: warnings.append("😬 Super low inventory - deals might be scarce")
+    elif vacancy_pct > 20: warnings.append("👻 High vacancy - area might be struggling")
+    if income >= mhv/3.5: insights.append("💵 Buyers here can afford our flips!")
+    elif income < mhv/4.5: warnings.append("💸 Buyers might struggle to afford these prices")
+    if dom and dom < 40: insights.append(f"⚡ Hot market - sells in ~{dom} days!")
+    elif dom and dom > 90: warnings.append(f"🐌 Slower market - takes ~{dom} days to sell")
 
     return {
         "score": total_score,
@@ -321,33 +328,33 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     if gap_ratio is not None:
         if 1.3 <= gap_ratio <= 1.4:
-            insights.append("Perfect buy-sell gap for profitable flips")
+            insights.append("💰 Sweet profit margin - perfect for flips!")
         elif gap_ratio < 1.1:
-            warnings.append("Limited profit potential — median too close to budget")
+            warnings.append("⚠️ Margins too tight - not much profit room")
         elif gap_ratio > 1.7:
-            warnings.append("Median significantly above budget — verify distressed inventory exists")
+            warnings.append("🤔 Median's pretty high - make sure fixer-uppers exist!")
 
     if vac_pct is not None:
         if 8.0 <= vac_pct <= 15.0:
-            insights.append("Healthy inventory levels")
+            insights.append("🏚️ Good supply of houses to choose from")
         elif vac_pct < 5.0:
-            warnings.append("Very low vacancy — limited deal flow")
+            warnings.append("😬 Super low inventory - deals might be scarce")
         elif vac_pct > 20.0:
-            warnings.append("High vacancy may indicate declining area")
+            warnings.append("👻 High vacancy - area might be struggling")
 
     if med_home_val and med_income:
         ideal_income = med_home_val / 3.5
         ratio = (med_income / ideal_income) if ideal_income else 0
         if ratio >= 1.0:
-            insights.append("Strong buyer income for resale")
+            insights.append("💵 Buyers here can afford our flips!")
         elif ratio < 0.8:
-            warnings.append("Buyer income may limit resale market")
+            warnings.append("💸 Buyers might struggle to afford these prices")
 
     if dom is not None:
         if dom < 40:
-            insights.append(f"Fast-moving market ({int(dom)} days)")
+            insights.append(f"⚡ Hot market - sells in ~{int(dom)} days!")
         elif dom > 90:
-            warnings.append(f"Slower market ({int(dom)} days to sell)")
+            warnings.append(f"🐌 Slower market - takes ~{int(dom)} days to sell")
 
     # Keep cards concise
     insights = insights[:3]
