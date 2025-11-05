@@ -181,7 +181,7 @@
       try {
         const params = new URLSearchParams({
           top: '50',
-          min_score: '50',  // Only show "Good" or better areas (50+ score)
+          min_score: '0',  // Show all areas (we'll investigate the "only 9" issue separately)
           price_min: String(minPrice),
           price_max: String(maxPrice),
           rehab_budget: String(rehabBudget),
