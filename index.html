@@ -221,18 +221,18 @@
     }
 
     function getScoreClass(score){
-      if(score>=80) return 'excellent';
-      if(score>=70) return 'very-good';
-      if(score>=50) return 'good';
+      if(score>=75) return 'excellent';
+      if(score>=60) return 'very-good';
+      if(score>=45) return 'good';
       if(score>=30) return 'fair';
       return 'poor';
     }
     function getScoreLabel(score){
-      if(score>=80) return 'Excellent';
-      if(score>=70) return 'Very Good';
-      if(score>=50) return 'Good';
-      if(score>=30) return 'Fair';
-      return 'Poor';
+      if(score>=75) return '🔥 Hot!';      // 75+ = A grade
+      if(score>=60) return 'Solid';        // 60-74 = B grade
+      if(score>=45) return 'Worth It';     // 45-59 = C grade
+      if(score>=30) return 'Meh';          // 30-44 = D grade
+      return 'Skip It';                     // <30 = F grade
     }
     function fmtMoney(x){ return (x || x===0) ? ('$'+Number(x).toLocaleString()) : 'N/A'; }
 

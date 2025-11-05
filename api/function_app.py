@@ -76,20 +76,72 @@ def tract_id_human(tract_str: str) -> str:
     return f"{t[:4]}.{t[4:]}"
 
 def neighborhood_label(county_name: str, tract: str) -> str:
-    # (very rough bucketing to make group names human)
+    """Map census tracts to recognizable neighborhoods/cities"""
     t = (tract or "").zfill(6)
     head = int(t[:2]) if t.isdigit() else 0
+
     if county_name == "Marion":
-        if head <= 10:  return "Indianapolis — Eastside"
-        if head <= 20:  return "Indianapolis — South/Southeast"
-        if head <= 30:  return "Indianapolis — Far Eastside"
-        if head <= 40:  return "Indianapolis — Near Eastside/Downtown"
-        return "Indianapolis — Outlying Areas"
+        # Indianapolis - break into recognizable neighborhoods
+        if head <= 5:  return "Indianapolis — Far Eastside"
+        if head <= 12:  return "Indianapolis — Lawrence/Castleton"
+        if head <= 18:  return "Indianapolis — Broad Ripple/Butler"
+        if head <= 25:  return "Indianapolis — Downtown/Near North"
+        if head <= 32:  return "Indianapolis — Fountain Square/Fletcher"
+        if head <= 38:  return "Indianapolis — Irvington/Warren Park"
+        if head <= 45:  return "Indianapolis — Southport/Greenwood area"
+        if head <= 52:  return "Indianapolis — Pike/Northwest"
+        if head <= 65:  return "Indianapolis — Decatur/Southwest"
+        if head <= 75:  return "Indianapolis — Franklin Township/Southeast"
+        if head <= 85:  return "Indianapolis — Perry Township/Southside"
+        return "Indianapolis — Outlying/Suburbs"
+
+    if county_name == "Hamilton":
+        # Wealthy suburbs - break into cities
+        if head <= 8:  return "Noblesville"
+        if head <= 15:  return "Westfield"
+        if head <= 25:  return "Carmel — North"
+        if head <= 35:  return "Carmel — South/Keystone"
+        if head <= 50:  return "Fishers — North"
+        if head <= 70:  return "Fishers — South/Geist"
+        return "Hamilton County — North suburbs"
+
+    if county_name == "Hendricks":
+        if head <= 15:  return "Avon"
+        if head <= 35:  return "Plainfield"
+        if head <= 50:  return "Brownsburg"
+        return "Danville/Hendricks County"
+
+    if county_name == "Johnson":
+        if head <= 20:  return "Greenwood"
+        if head <= 40:  return "Franklin"
+        if head <= 60:  return "Whiteland/New Whiteland"
+        return "Johnson County — South suburbs"
+
+    if county_name == "Boone":
+        if head <= 20:  return "Zionsville"
+        if head <= 50:  return "Lebanon"
+        return "Boone County — Whitestown area"
+
     if county_name == "Madison":
-        if head <= 10:  return "Anderson — Far West"
-        if head <= 20:  return "Anderson — East Side (North)"
-        return "Anderson — East Side (Central)"
-    return f"{county_name} County — Outlying Areas Subarea"
+        if head <= 10:  return "Anderson — West Side"
+        if head <= 20:  return "Anderson — Downtown/Central"
+        if head <= 35:  return "Anderson — East Side"
+        if head <= 50:  return "Anderson — South"
+        return "Madison County — Pendleton/Chesterfield"
+
+    if county_name == "Shelby":
+        if head <= 30:  return "Shelbyville — Central"
+        return "Shelby County — Outlying"
+
+    if county_name == "Morgan":
+        if head <= 30:  return "Martinsville"
+        return "Morgan County — Outlying"
+
+    if county_name == "Hancock":
+        if head <= 30:  return "Greenfield"
+        return "Hancock County — Outlying"
+
+    return f"{county_name} County"
 
 # --- Listings cache (per ZIP) ---
 _listings_cache = {}  # { zip: {"ts": ISO_UTC, "data": {...}} }
@@ -217,23 +269,59 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
         return {"median_days_on_market": None}
 
 def get_zip_for_tract(county_fips: str, tract: str) -> Optional[str]:
+    """Map census tracts to ZIP codes for market data lookups"""
     t2 = int((tract or "000000").zfill(6)[:2])
+
+    if county_fips == "097":  # Marion (Indianapolis)
+        if t2 <= 5: return "46239"      # Far Eastside
+        if t2 <= 12: return "46226"     # Lawrence/Castleton
+        if t2 <= 18: return "46220"     # Broad Ripple
+        if t2 <= 25: return "46202"     # Downtown
+        if t2 <= 32: return "46203"     # Fountain Square
+        if t2 <= 38: return "46219"     # Irvington
+        if t2 <= 45: return "46227"     # Southport
+        if t2 <= 52: return "46254"     # Pike
+        if t2 <= 65: return "46241"     # Decatur
+        if t2 <= 75: return "46237"     # Franklin Township
+        return "46217"                  # Perry Township
+
     if county_fips == "057":  # Hamilton
-        if t2 <= 11: return "46060"   # Noblesville-ish
-        if t2 <= 20: return "46062"   # Westfield-ish
-        return "46038"                # Fishers-ish
+        if t2 <= 8: return "46060"      # Noblesville
+        if t2 <= 15: return "46074"     # Westfield
+        if t2 <= 25: return "46032"     # Carmel North
+        if t2 <= 35: return "46033"     # Carmel South
+        if t2 <= 50: return "46038"     # Fishers North
+        return "46037"                  # Fishers South/Geist
+
     if county_fips == "063":  # Hendricks
-        return "46123"                 # Avon-ish
+        if t2 <= 15: return "46123"     # Avon
+        if t2 <= 35: return "46168"     # Plainfield
+        return "46112"                  # Brownsburg
+
     if county_fips == "081":  # Johnson
-        return "46143"                 # Greenwood-ishif county_fips == "097":  # Marion
-        head = int((tract or "000000").zfill(6)[:2])
-        if head <= 15: return "46219"
-        if head <= 25: return "46227"
-        return "46218"
+        if t2 <= 20: return "46143"     # Greenwood
+        if t2 <= 40: return "46131"     # Franklin
+        return "46184"                  # Whiteland
+
+    if county_fips == "011":  # Boone
+        if t2 <= 20: return "46077"     # Zionsville
+        return "46052"                  # Lebanon
+
     if county_fips == "095":  # Madison
-        return "46016"
+        if t2 <= 10: return "46011"     # Anderson West
+        if t2 <= 20: return "46016"     # Anderson Downtown
+        if t2 <= 35: return "46013"     # Anderson East
+        return "46017"                  # Anderson South
+
     if county_fips == "145":  # Shelby
-        return "46176"
+        return "46176"                  # Shelbyville
+
+    if county_fips == "109":  # Morgan
+        return "46151"                  # Martinsville
+
+    if county_fips == "059":  # Hancock
+        return "46140"                  # Greenfield
+
     return None
 
 # === SCORING ===
