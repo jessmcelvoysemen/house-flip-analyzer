@@ -178,8 +178,14 @@
       analyzeBtn.disabled = true;
       resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing neighborhoods and market data...</p></div>';
 
-      console.log('Starting analysis with params:', {
-        minPrice, maxPrice, rehabBudget, includeMarketData, groupNeighborhoods
+      const targetRangeMin = Math.round(maxPrice * 1.1);
+      const targetRangeMax = Math.round(maxPrice * 1.6);
+      console.log('🔍 Starting analysis with params:', {
+        budget: `$${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}`,
+        targetMedianRange: `$${targetRangeMin.toLocaleString()} - $${targetRangeMax.toLocaleString()}`,
+        rehabBudget: `$${rehabBudget.toLocaleString()}`,
+        includeMarketData,
+        groupNeighborhoods
       });
 
       try {
@@ -359,6 +365,28 @@
 
       // Check if any items have market data
       const hasMarketData = items.some(item => item.days_on_market != null);
+
+      // Calculate how many are in the target range
+      const priceMax = data.price_band_used ? data.price_band_used.max : maxPrice;
+      const targetMin = Math.round(priceMax * 1.1);
+      const targetMax = Math.round(priceMax * 1.6);
+      const inRangeCount = items.filter(item =>
+        item.median_home_value >= targetMin && item.median_home_value <= targetMax
+      ).length;
+
+      console.log('📊 Results analysis:', {
+        totalResults: items.length,
+        inTargetRange: inRangeCount,
+        outOfRange: items.length - inRangeCount,
+        targetRange: `$${targetMin.toLocaleString()} - $${targetMax.toLocaleString()}`,
+        topThree: items.slice(0, 3).map(i => ({
+          name: i.neighborhood,
+          median: `$${(i.median_home_value || 0).toLocaleString()}`,
+          score: i.score,
+          inRange: i.median_home_value >= targetMin && i.median_home_value <= targetMax ? '✓' : '✗'
+        }))
+      });
+
       console.log('Market data status:', {
         requested: data.market_data_enabled,
         found: hasMarketData,
@@ -371,6 +399,16 @@
         + '<div class="summary-item"><div class="summary-label">Top Score</div><div class="summary-value">'+(data.summary && data.summary.top_score || 0)+'/100</div></div>'
         + '<div class="summary-item"><div class="summary-label">Avg Score</div><div class="summary-value">'+(data.summary && data.summary.avg_score || 0)+'/100</div></div>'
         + (band ? '<div class="summary-item"><div class="summary-label">Price Range</div><div class="summary-value">'+band+'</div></div>' : '')
+        + '</div>';
+
+      // Show target range for this budget
+      const priceMax = data.price_band_used ? data.price_band_used.max : maxPrice;
+      const targetMin = Math.round(priceMax * 1.1);
+      const targetMax = Math.round(priceMax * 1.6);
+      html += '<div style="background:#e0e7ff; border:2px solid #6366f1; border-radius:12px; padding:12px; margin-top:14px; text-align:center;">'
+        + '<div style="font-weight:600; margin-bottom:4px;">🎯 Target Median Home Value Range for Your Budget</div>'
+        + '<div style="font-size:14px;">Looking for neighborhoods with median values between <strong>'+fmtMoney(targetMin)+'</strong> and <strong>'+fmtMoney(targetMax)+'</strong></div>'
+        + '<div style="font-size:12px; color:#475569; margin-top:4px;">This is ~1.1-1.6× your max purchase price of '+fmtMoney(priceMax)+'</div>'
         + '</div>';
 
       // Add market data indicator
@@ -415,11 +453,19 @@
         if(grouped && item.label_hint) chips.push('<span class="chip-hint">'+item.label_hint+'</span>');
         const helpersRow = chips.length ? ('<div class="chips">'+chips.join('')+'</div>') : '';
 
+        // Calculate target range for this budget
+        const targetMin = Math.round(maxPrice * 1.1);
+        const targetMax = Math.round(maxPrice * 1.6);
+        const inRange = item.median_home_value >= targetMin && item.median_home_value <= targetMax;
+        const rangeIndicator = inRange
+          ? '<span style="color:#16a34a; font-size:11px; margin-left:4px;">✓ In target range</span>'
+          : '<span style="color:#dc2626; font-size:11px; margin-left:4px;">⚠️ Outside range</span>';
+
         const domRow = (item.days_on_market!=null)
           ? '<div class="info-row" style="background:#e0f2fe; padding:6px; border-radius:6px; margin-top:6px;"><span class="info-label">⚡ Days on Market</span><span class="info-value" style="color:#0369a1; font-weight:700;">'+item.days_on_market+' days</span></div>'
           : '';
         const baseRows =
-          '<div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">'+fmtMoney(item.median_home_value)+'</span></div>'
+          '<div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">'+fmtMoney(item.median_home_value)+rangeIndicator+'</span></div>'
           + domRow;
 
         var flipCalc = '';
