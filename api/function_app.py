@@ -580,6 +580,7 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
 
         # optional market data
         if include_market_data and RAPIDAPI_KEY:
+            logging.info(f"🔍 Fetching market data for up to {max_market_lookups} areas...")
             looked = 0
             for t in filtered:
                 if looked >= max_market_lookups: break
@@ -592,10 +593,12 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                         t["days_on_market"] = int(dom)
                         t["zip_code"] = zip_guess
                         looked += 1
+                        logging.info(f"  ✓ ZIP {zip_guess}: {dom} days on market")
                     time.sleep(0.15)
                 except Exception as e:
-                    logging.warning(f"Failed to fetch market data for tract: {e}")
+                    logging.warning(f"  ✗ Failed to fetch market data for tract: {e}")
                     continue
+            logging.info(f"✅ Market data fetched for {looked} areas")
 
         if not do_group:
             top_ops = filtered[:top_n]

@@ -178,6 +178,10 @@
       analyzeBtn.disabled = true;
       resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing neighborhoods and market data...</p></div>';
 
+      console.log('Starting analysis with params:', {
+        minPrice, maxPrice, rehabBudget, includeMarketData, groupNeighborhoods
+      });
+
       try {
         const params = new URLSearchParams({
           top: '50',
@@ -190,23 +194,63 @@
         });
         const url = API_URL + '?' + params.toString();
 
-        const controller = new AbortController();
-        const timer = setTimeout(function(){ controller.abort(); }, 60000);
-        const res = await fetch(url, { method: 'GET', signal: controller.signal });
-        clearTimeout(timer);
+        // Longer timeout when fetching market data (RapidAPI calls take time)
+        const timeoutMs = includeMarketData ? 120000 : 60000;
 
-        const raw = await res.text();
-        let data; try { data = JSON.parse(raw); } catch (e) { data = null; }
+        // Use fetch with timeout, but handle aborts gracefully
+        let res;
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(function(){
+            console.warn('Request timeout after ' + (timeoutMs/1000) + ' seconds');
+            controller.abort();
+          }, timeoutMs);
+
+          res = await fetch(url, {
+            method: 'GET',
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+          clearTimeout(timer);
+        } catch (fetchError) {
+          if (fetchError.name === 'AbortError') {
+            throw new Error('Request timed out. Try without "Show Days on Market" for faster results.');
+          }
+          throw fetchError;
+        }
 
         if (!res.ok) {
-          const msg = (data && (data.error || data.message)) || raw || ('HTTP ' + res.status);
-          throw new Error(msg);
+          const errorText = await res.text();
+          let errorMsg = 'HTTP ' + res.status;
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMsg = (errorData.error || errorData.message) || errorMsg;
+          } catch (e) {
+            errorMsg = errorText || errorMsg;
+          }
+          throw new Error(errorMsg);
         }
+
+        const raw = await res.text();
+        let data;
+        try {
+          data = JSON.parse(raw);
+          console.log('✅ Received data successfully:', {
+            status: data.status,
+            neighborhoods: data.neighborhoods ? data.neighborhoods.length : 0,
+            opportunities: data.opportunities ? data.opportunities.length : 0,
+            market_data_enabled: data.market_data_enabled
+          });
+        } catch (parseError) {
+          console.error('❌ JSON parse error:', parseError, 'Raw response:', raw.substring(0, 200));
+          throw new Error('Invalid response from server. Check console for details.');
+        }
+
         if (data && data.status === 'error') {
           throw new Error(data.message || 'API returned an error.');
         }
 
-        await sleep(600); // “thinking” moment
+        await sleep(600); // "thinking" moment
         displayResults(data, rehabBudget, maxPrice);
       } catch (err) {
         console.error(err);
