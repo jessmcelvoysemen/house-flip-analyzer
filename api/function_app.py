@@ -598,34 +598,6 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
         all_tracts.sort(key=lambda x: x["score"], reverse=True)
         filtered = [t for t in all_tracts if (t.get("score") or 0) >= min_score]
 
-        # optional market data
-        rate_limit_hit = False
-        if include_market_data and RAPIDAPI_KEY:
-            logging.info(f"🔍 Fetching market data for up to {max_market_lookups} areas...")
-            looked = 0
-            for t in filtered:
-                if looked >= max_market_lookups: break
-                try:
-                    zip_guess = get_zip_for_tract(t.get("county"), t.get("tract"))
-                    if not zip_guess: continue
-                    market_stats = get_market_stats_for_zip(zip_guess)
-                    dom = market_stats.get("median_days_on_market") if market_stats else None
-                    if dom is not None:
-                        t["days_on_market"] = int(dom)
-                        t["zip_code"] = zip_guess
-                        looked += 1
-                        logging.info(f"  ✓ ZIP {zip_guess}: {dom} days on market")
-                    time.sleep(0.15)
-                except Exception as e:
-                    error_msg = str(e)
-                    if "429" in error_msg:
-                        rate_limit_hit = True
-                    logging.warning(f"  ✗ Failed to fetch market data for tract: {e}")
-                    continue
-            logging.info(f"✅ Market data fetched for {looked} areas")
-            if rate_limit_hit and looked == 0:
-                errors.append("⚠️ RapidAPI rate limit exceeded. Market data unavailable. Please check your RapidAPI quota or try again later.")
-
         if not do_group:
             top_ops = filtered[:top_n]
             return func.HttpResponse(json.dumps({
@@ -703,6 +675,91 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             neighborhoods.append(agg)
 
         neighborhoods.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        # Fetch market data for TOP neighborhoods after grouping (much more efficient!)
+        rate_limit_hit = False
+        if include_market_data and RAPIDAPI_KEY and neighborhoods:
+            # Limit to top neighborhoods to avoid timeout
+            fetch_limit = min(max_market_lookups, len(neighborhoods), 15)
+            logging.info(f"🔍 Fetching market data for top {fetch_limit} neighborhoods...")
+            looked = 0
+
+            for neighborhood in neighborhoods[:fetch_limit]:
+                try:
+                    # Try to get ZIP from member tracts or guess
+                    zip_code = neighborhood.get("zip_guess")
+                    if not zip_code:
+                        # Get ZIP from first member tract
+                        members = neighborhood.get("member_tracts", [])
+                        if members and members[0].get("zip_code"):
+                            zip_code = members[0]["zip_code"]
+
+                    if not zip_code:
+                        continue
+
+                    market_stats = get_market_stats_for_zip(zip_code)
+                    dom = market_stats.get("median_days_on_market") if market_stats else None
+
+                    if dom is not None:
+                        neighborhood["days_on_market"] = int(dom)
+                        looked += 1
+                        logging.info(f"  ✓ {neighborhood.get('neighborhood')} (ZIP {zip_code}): {dom} days")
+
+                        # Recalculate insights/warnings with DOM included
+                        gap_ratio = neighborhood.get("gap_ratio")
+                        vac_pct = neighborhood.get("vacancy_pct")
+                        med_home_val = neighborhood.get("median_home_value")
+                        med_income = neighborhood.get("median_income")
+
+                        insights = []
+                        warnings = []
+
+                        if gap_ratio is not None:
+                            if 1.3 <= gap_ratio <= 1.4:
+                                insights.append("💰 Strong profit potential in this price range")
+                            elif gap_ratio < 1.1:
+                                warnings.append("⚠️ Limited profit margin")
+                            elif gap_ratio > 1.7:
+                                warnings.append("⚠️ Median value significantly above budget")
+
+                        if vac_pct is not None:
+                            if 8.0 <= vac_pct <= 15.0:
+                                insights.append("✓ Healthy inventory levels")
+                            elif vac_pct < 5.0:
+                                warnings.append("⚠️ Limited inventory availability")
+                            elif vac_pct > 20.0:
+                                warnings.append("⚠️ High vacancy may indicate market weakness")
+
+                        if med_home_val and med_income:
+                            ideal_income = med_home_val / 3.5
+                            ratio = (med_income / ideal_income) if ideal_income else 0
+                            if ratio >= 1.0:
+                                insights.append("✓ Strong buyer income for resale")
+                            elif ratio < 0.8:
+                                warnings.append("⚠️ Income levels may limit buyer pool")
+
+                        # DOM insights
+                        if dom < 40:
+                            insights.append(f"⚡ Fast-moving market (~{int(dom)} days)")
+                        elif dom > 90:
+                            warnings.append(f"⚠️ Slower market (~{int(dom)} days to sell)")
+
+                        neighborhood["insights"] = insights[:3]
+                        neighborhood["warnings"] = warnings[:3]
+
+                    time.sleep(0.15)  # Rate limit protection
+
+                except Exception as e:
+                    error_msg = str(e)
+                    if "429" in error_msg:
+                        rate_limit_hit = True
+                    logging.warning(f"  ✗ Failed to fetch market data: {e}")
+                    continue
+
+            logging.info(f"✅ Market data fetched for {looked} neighborhoods")
+            if rate_limit_hit and looked == 0:
+                errors.append("⚠️ RapidAPI rate limit exceeded. Market data unavailable.")
+
         top_areas = neighborhoods[:top_n]
 
         result = {
