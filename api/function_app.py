@@ -623,6 +623,20 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             key = f"{t.get('county_name')}|{t.get('neighborhood')}"
             groups.setdefault(key, []).append(t)
 
+        print("\n" + "="*70)
+        print(f"📊 NEIGHBORHOOD GROUPING BREAKDOWN")
+        print("="*70)
+        print(f"Total tracts analyzed: {len(all_tracts)}")
+        print(f"Tracts after filtering: {len(filtered)}")
+        print(f"Number of neighborhood groups created: {len(groups)}")
+        print("\nNeighborhoods found:")
+        for key in sorted(groups.keys()):
+            county, neigh = key.split("|", 1)
+            tract_count = len(groups[key])
+            avg_score = sum(t.get('score', 0) for t in groups[key]) / tract_count if tract_count > 0 else 0
+            print(f"  • {neigh} ({county}): {tract_count} tracts, avg score: {avg_score:.1f}")
+        print("="*70 + "\n")
+
         logging.info(f"📊 Grouped {len(filtered)} tracts into {len(groups)} neighborhoods:")
         for key in sorted(groups.keys()):
             county, neigh = key.split("|", 1)
