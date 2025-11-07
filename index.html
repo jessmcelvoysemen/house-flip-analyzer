@@ -356,6 +356,15 @@
 
       const band = data.price_band_used ? ('$'+Number(data.price_band_used.min).toLocaleString()+'–$'+Number(data.price_band_used.max).toLocaleString()) : null;
       const totalResults = items.length;
+
+      // Check if any items have market data
+      const hasMarketData = items.some(item => item.days_on_market != null);
+      console.log('Market data status:', {
+        requested: data.market_data_enabled,
+        found: hasMarketData,
+        sample: items[0]?.days_on_market
+      });
+
       var html = '<div class="summary">'
         + '<div class="summary-item"><div class="summary-label">Tracts Analyzed</div><div class="summary-value">'+(data.total_tracts_analyzed||0)+'</div></div>'
         + '<div class="summary-item"><div class="summary-label">Results Found</div><div class="summary-value">'+ totalResults +'</div></div>'
@@ -363,6 +372,19 @@
         + '<div class="summary-item"><div class="summary-label">Avg Score</div><div class="summary-value">'+(data.summary && data.summary.avg_score || 0)+'/100</div></div>'
         + (band ? '<div class="summary-item"><div class="summary-label">Price Range</div><div class="summary-value">'+band+'</div></div>' : '')
         + '</div>';
+
+      // Add market data indicator
+      if (data.market_data_enabled) {
+        if (hasMarketData) {
+          html += '<div style="background:#dcfce7; border:2px solid #16a34a; border-radius:12px; padding:12px; margin-top:14px; text-align:center; font-weight:600;">'
+            + '⚡ Market data enabled - Days on Market shown below where available'
+            + '</div>';
+        } else {
+          html += '<div style="background:#fef3c7; border:2px solid #f59e0b; border-radius:12px; padding:12px; margin-top:14px; text-align:center; font-weight:600;">'
+            + '⚠️ Market data requested but not available for these areas'
+            + '</div>';
+        }
+      }
 
       if (totalResults > 9) {
         html += '<div style="background:#fef3c7; border:2px solid #fbbf24; border-radius:12px; padding:12px; margin-top:14px; text-align:center; font-weight:600;">'
@@ -394,7 +416,7 @@
         const helpersRow = chips.length ? ('<div class="chips">'+chips.join('')+'</div>') : '';
 
         const domRow = (item.days_on_market!=null)
-          ? '<div class="info-row"><span class="info-label">Avg. Days on Market</span><span class="info-value">'+item.days_on_market+' days</span></div>'
+          ? '<div class="info-row" style="background:#e0f2fe; padding:6px; border-radius:6px; margin-top:6px;"><span class="info-label">⚡ Days on Market</span><span class="info-value" style="color:#0369a1; font-weight:700;">'+item.days_on_market+' days</span></div>'
           : '';
         const baseRows =
           '<div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">'+fmtMoney(item.median_home_value)+'</span></div>'
