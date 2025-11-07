@@ -797,6 +797,18 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             r = requests.post(RAPIDAPI_TEST_URL, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
             if r.status_code == 404:
                 data = {"results": [], "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}}
+            elif r.status_code == 429:
+                # Rate limit hit - return helpful message
+                return func.HttpResponse(
+                    json.dumps({
+                        "status": "rate_limit",
+                        "message": "Daily listing limit reached. Try again tomorrow!",
+                        "results": [],
+                        "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}
+                    }),
+                    mimetype="application/json",
+                    headers=CORS_HEADERS
+                )
             else:
                 r.raise_for_status()
                 raw = r.json()

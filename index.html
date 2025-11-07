@@ -345,6 +345,15 @@
         const res = await fetch(LIST_URL + '?' + q.toString());
         const data = await res.json();
 
+        // Check for rate limit
+        if (data.status === 'rate_limit') {
+          target.innerHTML = '<div class="error" style="padding:12px; font-size:14px;">'
+            + '<strong>🏠 Listings Temporarily Unavailable</strong><br/>'
+            + '<span style="color:#475569;">The free connection to Realtor.com has hit its daily limit. Try again tomorrow!</span>'
+            + '</div>';
+          return;
+        }
+
         const c = data.counts || {};
         var head = '<div style="margin-bottom:8px;color:#475569">'
           + 'Supply: <strong>'+(c.active_total||0)+'</strong> active · '
