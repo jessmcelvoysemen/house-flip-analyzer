@@ -227,14 +227,17 @@
 
         if (!res.ok) {
           const errorText = await res.text();
-          let errorMsg = 'HTTP ' + res.status;
+          const statusCode = res.status;
+          let errorMsg = 'HTTP ' + statusCode;
           try {
             const errorData = JSON.parse(errorText);
             errorMsg = (errorData.error || errorData.message) || errorMsg;
           } catch (e) {
             errorMsg = errorText || errorMsg;
           }
-          throw new Error(errorMsg);
+          const err = new Error(errorMsg);
+          err.statusCode = statusCode;
+          throw err;
         }
 
         const raw = await res.text();
@@ -260,11 +263,35 @@
         displayResults(data, rehabBudget, maxPrice);
       } catch (err) {
         console.error(err);
-        resultsDiv.innerHTML = '<div class="error">'
-          + '<h3>⚠️ Error Loading Data</h3>'
-          + '<p><strong>Error:</strong> ' + (err.message || err) + '</p>'
-          + '<p style="margin-top:8px; font-size:12px; color:#475569;">Please try again or adjust your search parameters.</p>'
-          + '</div>';
+
+        // Smart handling for rate limit errors when market data is enabled
+        const isRateLimitError = includeMarketData && (
+          err.statusCode === 500 ||
+          (err.message && (err.message.includes('429') || err.message.includes('rate limit') || err.message.includes('Rate Limit')))
+        );
+
+        if (isRateLimitError) {
+          resultsDiv.innerHTML = '<div class="error">'
+            + '<h3>⚠️ RapidAPI Rate Limit Exceeded</h3>'
+            + '<p><strong>Days on Market</strong> feature requires API calls that have reached their quota limit.</p>'
+            + '<p style="margin-top:12px;">Your options:</p>'
+            + '<ul style="margin:8px 0; padding-left:20px;">'
+            + '<li>Wait until tomorrow when your quota resets</li>'
+            + '<li>Upgrade your RapidAPI plan at <a href="https://rapidapi.com/dashboard" target="_blank" style="color:#6366f1;">rapidapi.com/dashboard</a></li>'
+            + '<li><strong>Or search without Days on Market:</strong></li>'
+            + '</ul>'
+            + '<button onclick="document.getElementById(\'includeMarketData\').checked=false; document.getElementById(\'analyzeBtn\').click();" '
+            + 'style="background:#6366f1; color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; margin-top:8px;">'
+            + '🔄 Search Without Days on Market'
+            + '</button>'
+            + '</div>';
+        } else {
+          resultsDiv.innerHTML = '<div class="error">'
+            + '<h3>⚠️ Error Loading Data</h3>'
+            + '<p><strong>Error:</strong> ' + (err.message || err) + '</p>'
+            + '<p style="margin-top:8px; font-size:12px; color:#475569;">Please try again or adjust your search parameters.</p>'
+            + '</div>';
+        }
       } finally {
         analyzeBtn.disabled = false;
       }
