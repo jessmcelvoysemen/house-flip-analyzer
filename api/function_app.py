@@ -623,6 +623,11 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             key = f"{t.get('county_name')}|{t.get('neighborhood')}"
             groups.setdefault(key, []).append(t)
 
+        logging.info(f"📊 Grouped {len(filtered)} tracts into {len(groups)} neighborhoods:")
+        for key in sorted(groups.keys()):
+            county, neigh = key.split("|", 1)
+            logging.info(f"  • {neigh} ({county}): {len(groups[key])} tracts")
+
         neighborhoods: List[Dict[str, Any]] = []
         for key, rows in groups.items():
             county_name, neigh = key.split("|", 1)
