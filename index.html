@@ -201,7 +201,7 @@
         const url = API_URL + '?' + params.toString();
 
         // Longer timeout when fetching market data (RapidAPI calls take time)
-        const timeoutMs = includeMarketData ? 120000 : 60000;
+        const timeoutMs = includeMarketData ? 180000 : 90000;
 
         // Use fetch with timeout, but handle aborts gracefully
         let res;
@@ -220,7 +220,8 @@
           clearTimeout(timer);
         } catch (fetchError) {
           if (fetchError.name === 'AbortError') {
-            throw new Error('Request timed out. Try without "Show Days on Market" for faster results.');
+            const timeoutSec = Math.round(timeoutMs / 1000);
+            throw new Error(`Request timed out after ${timeoutSec} seconds. The analysis is processing a large area. ${includeMarketData ? 'Try without "Show Days on Market" for faster results, or' : ''} try narrowing your price range.`);
           }
           throw fetchError;
         }
@@ -264,10 +265,10 @@
       } catch (err) {
         console.error(err);
 
-        // Smart handling for rate limit errors when market data is enabled
+        // Smart handling for rate limit errors (must be explicit, not just any 500 error)
         const isRateLimitError = includeMarketData && (
-          err.statusCode === 500 ||
-          (err.message && (err.message.includes('429') || err.message.includes('rate limit') || err.message.includes('Rate Limit')))
+          err.statusCode === 429 ||
+          (err.message && (err.message.includes('429') || err.message.toLowerCase().includes('rate limit') || err.message.toLowerCase().includes('daily limit')))
         );
 
         if (isRateLimitError) {
