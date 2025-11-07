@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>💰 Family Flip Finder 💰</title>
+  <title>Flip Finder</title>
   <style>
     :root {
       --bg1: #6a11cb;
@@ -114,31 +114,31 @@
 <body>
   <div class="container">
     <div class="header">
-      <div style="font-size:28px">💰</div>
+      <div style="font-size:28px">🏠</div>
       <div>
-        <h1>Family Flip Finder</h1>
-        <p>Let's find our next money-maker in Central Indiana! 🏡✨</p>
+        <h1>Flip Finder</h1>
+        <p>Data-driven insights for house flipping opportunities in Central Indiana</p>
       </div>
     </div>
 
     <div class="explain">
-      <h3>🎯 How We Pick Winners (0–100 points)</h3>
+      <h3>🧮 How This Works (0–100 scoring)</h3>
       <div class="grid">
-        <div class="tile"><strong>💸 Profit Potential (40%)</strong><br/>Sweet spot: homes worth ~1.3–1.4× what we can buy 'em for!</div>
-        <div class="tile"><strong>🏚️ Available Deals (25%)</strong><br/>8–15% vacancy = enough fixer-uppers, but not a ghost town.</div>
-        <div class="tile"><strong>💵 Buyer Pool (25%)</strong><br/>Can folks here afford to buy after we fix it up?</div>
-        <div class="tile"><strong>⚡ Market Speed (10%)</strong><br/>How fast can we flip it? Faster = better!</div>
+        <div class="tile"><strong>💰 Profit Potential (40%)</strong><br/>Best when median values are 1.3–1.4× max purchase price</div>
+        <div class="tile"><strong>🏚️ Inventory Levels (25%)</strong><br/>8–15% vacancy indicates healthy deal flow</div>
+        <div class="tile"><strong>👥 Buyer Market (25%)</strong><br/>Income levels support resale at expected prices</div>
+        <div class="tile"><strong>⚡ Market Speed (10%)</strong><br/>Lower days on market means faster turnaround</div>
       </div>
     </div>
 
     <div class="controls">
       <div class="form-group">
         <label for="minPrice" class="form-label">Min Purchase Price</label>
-        <input id="minPrice" class="form-input" type="number" value="200000" step="5000" />
+        <input id="minPrice" class="form-input" type="number" value="150000" step="5000" />
       </div>
       <div class="form-group">
         <label for="maxPrice" class="form-label">Max Purchase Price</label>
-        <input id="maxPrice" class="form-input" type="number" value="225000" step="5000" />
+        <input id="maxPrice" class="form-input" type="number" value="250000" step="5000" />
       </div>
       <div class="form-group rehab">
         <label for="rehabBudget" class="form-label">Rehab Budget</label>
@@ -150,12 +150,12 @@
         <label><input id="groupNeighborhoods" type="checkbox" checked /> Group nearby areas</label>
       </div>
       <div class="actions">
-        <button id="analyzeBtn" onclick="analyzeNeighborhoods()">🚀 Let's Make Some Money!</button>
+        <button id="analyzeBtn" onclick="analyzeNeighborhoods()">🔍 Analyze Opportunities</button>
       </div>
     </div>
 
     <div id="results" class="banner">
-      <div class="loading"><div class="spinner"></div><p>Ready to find our next flip? Hit that button! 👆</p></div>
+      <div class="loading"><div class="spinner"></div><p>Configure your search parameters above, then click Analyze</p></div>
     </div>
   </div>
 
@@ -169,14 +169,14 @@
       const resultsDiv = document.getElementById('results');
       const analyzeBtn = document.getElementById('analyzeBtn');
 
-      const minPrice = Number(document.getElementById('minPrice').value || 200000);
-      const maxPrice = Number(document.getElementById('maxPrice').value || 225000);
+      const minPrice = Number(document.getElementById('minPrice').value || 150000);
+      const maxPrice = Number(document.getElementById('maxPrice').value || 250000);
       const rehabBudget = Number(document.getElementById('rehabBudget').value || 40000);
       const includeMarketData = !!(document.getElementById('includeMarketData') && document.getElementById('includeMarketData').checked);
       const groupNeighborhoods = (document.getElementById('groupNeighborhoods') && document.getElementById('groupNeighborhoods').checked) ? 1 : 0;
 
       analyzeBtn.disabled = true;
-      resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Crunching the numbers... finding the gold! 💰</p></div>';
+      resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing neighborhoods and market data...</p></div>';
 
       try {
         const params = new URLSearchParams({
@@ -211,9 +211,9 @@
       } catch (err) {
         console.error(err);
         resultsDiv.innerHTML = '<div class="error">'
-          + '<h3>🤔 Oops! Something went wrong</h3>'
+          + '<h3>⚠️ Error Loading Data</h3>'
           + '<p><strong>Error:</strong> ' + (err.message || err) + '</p>'
-          + '<p style="margin-top:8px; font-size:12px; color:#475569;">Try again in a sec, or maybe adjust those numbers above!</p>'
+          + '<p style="margin-top:8px; font-size:12px; color:#475569;">Please try again or adjust your search parameters.</p>'
           + '</div>';
       } finally {
         analyzeBtn.disabled = false;
@@ -306,18 +306,18 @@
       const grouped = !!data.grouped_by_neighborhood || !!data.neighborhoods;
       const items = grouped ? (data.neighborhoods || []) : (data.opportunities || []);
       if(!items.length){
-        resultsDiv.innerHTML = '<div class="empty"><h2>🤷 No winners this time!</h2><p>Try tweaking that budget or maybe lower the quality bar a bit?</p></div>';
+        resultsDiv.innerHTML = '<div class="empty"><h2>No Results Found</h2><p>Try adjusting your price range or search parameters.</p></div>';
         return;
       }
 
       const band = data.price_band_used ? ('$'+Number(data.price_band_used.min).toLocaleString()+'–$'+Number(data.price_band_used.max).toLocaleString()) : null;
       const totalResults = items.length;
       var html = '<div class="summary">'
-        + '<div class="summary-item"><div class="summary-label">Searched</div><div class="summary-value">'+(data.total_tracts_analyzed||0)+' tracts</div></div>'
-        + '<div class="summary-item"><div class="summary-label">🏆 Winners!</div><div class="summary-value" style="color:#16a34a">'+ totalResults +'</div></div>'
+        + '<div class="summary-item"><div class="summary-label">Tracts Analyzed</div><div class="summary-value">'+(data.total_tracts_analyzed||0)+'</div></div>'
+        + '<div class="summary-item"><div class="summary-label">Results Found</div><div class="summary-value">'+ totalResults +'</div></div>'
         + '<div class="summary-item"><div class="summary-label">Top Score</div><div class="summary-value">'+(data.summary && data.summary.top_score || 0)+'/100</div></div>'
         + '<div class="summary-item"><div class="summary-label">Avg Score</div><div class="summary-value">'+(data.summary && data.summary.avg_score || 0)+'/100</div></div>'
-        + (band ? '<div class="summary-item"><div class="summary-label">Budget</div><div class="summary-value">'+band+'</div></div>' : '')
+        + (band ? '<div class="summary-item"><div class="summary-label">Price Range</div><div class="summary-value">'+band+'</div></div>' : '')
         + '</div>';
 
       if (totalResults > 9) {

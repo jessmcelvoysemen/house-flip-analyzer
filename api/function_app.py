@@ -21,8 +21,8 @@ RAPIDAPI_TEST_URL = os.environ.get(
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
 
-DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "200000"))
-DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "225000"))
+DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "150000"))
+DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "250000"))
 
 CENTRAL_IN_COUNTIES = {
     "Boone": "011",
@@ -367,16 +367,16 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     total_score = round(total * 100, 1)
 
     insights, warnings = [], []
-    if 1.3 <= gap_ratio <= 1.4: insights.append("💰 Sweet profit margin - perfect for flips!")
-    elif gap_ratio < 1.1: warnings.append("⚠️ Margins too tight - not much profit room")
-    elif gap_ratio > 1.7: warnings.append("🤔 Median's pretty high - make sure fixer-uppers exist!")
-    if 10 <= vacancy_pct <= 13: insights.append("🏚️ Good supply of houses to choose from")
-    elif vacancy_pct < 5: warnings.append("😬 Super low inventory - deals might be scarce")
-    elif vacancy_pct > 20: warnings.append("👻 High vacancy - area might be struggling")
-    if income >= mhv/3.5: insights.append("💵 Buyers here can afford our flips!")
-    elif income < mhv/4.5: warnings.append("💸 Buyers might struggle to afford these prices")
-    if dom and dom < 40: insights.append(f"⚡ Hot market - sells in ~{dom} days!")
-    elif dom and dom > 90: warnings.append(f"🐌 Slower market - takes ~{dom} days to sell")
+    if 1.3 <= gap_ratio <= 1.4: insights.append("💰 Strong profit potential in this price range")
+    elif gap_ratio < 1.1: warnings.append("⚠️ Limited profit margin")
+    elif gap_ratio > 1.7: warnings.append("⚠️ Median value significantly above budget")
+    if 10 <= vacancy_pct <= 13: insights.append("✓ Healthy inventory levels")
+    elif vacancy_pct < 5: warnings.append("⚠️ Limited inventory availability")
+    elif vacancy_pct > 20: warnings.append("⚠️ High vacancy may indicate market weakness")
+    if income >= mhv/3.5: insights.append("✓ Strong buyer income for resale")
+    elif income < mhv/4.5: warnings.append("⚠️ Income levels may limit buyer pool")
+    if dom and dom < 40: insights.append(f"⚡ Fast-moving market (~{dom} days)")
+    elif dom and dom > 90: warnings.append(f"⚠️ Slower market (~{dom} days to sell)")
 
     return {
         "score": total_score,
@@ -406,7 +406,11 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     med_home_val = pop_weighted_avg([(r.get("median_home_value"), r.get("total_pop") or 0) for r in rows])
     med_income   = pop_weighted_avg([(r.get("median_income"), r.get("total_pop") or 0) for r in rows])
     vac_pct      = pop_weighted_avg([(r.get("vacancy_pct"), r.get("total_pop") or 0) for r in rows])
-    dom          = pop_weighted_avg([(r.get("days_on_market"), r.get("total_pop") or 0) for r in rows])
+
+    # Only aggregate DOM if at least one tract in group has it
+    dom_values = [(r.get("days_on_market"), r.get("total_pop") or 0) for r in rows if r.get("days_on_market") is not None]
+    dom = pop_weighted_avg(dom_values) if dom_values else None
+
     gap_ratio    = pop_weighted_avg([(r.get("gap_ratio"), r.get("total_pop") or 0) for r in rows])
     area_score   = pop_weighted_avg([(r.get("score"), r.get("total_pop") or 0) for r in rows])
 
@@ -416,33 +420,33 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     if gap_ratio is not None:
         if 1.3 <= gap_ratio <= 1.4:
-            insights.append("💰 Sweet profit margin - perfect for flips!")
+            insights.append("💰 Strong profit potential in this price range")
         elif gap_ratio < 1.1:
-            warnings.append("⚠️ Margins too tight - not much profit room")
+            warnings.append("⚠️ Limited profit margin")
         elif gap_ratio > 1.7:
-            warnings.append("🤔 Median's pretty high - make sure fixer-uppers exist!")
+            warnings.append("⚠️ Median value significantly above budget")
 
     if vac_pct is not None:
         if 8.0 <= vac_pct <= 15.0:
-            insights.append("🏚️ Good supply of houses to choose from")
+            insights.append("✓ Healthy inventory levels")
         elif vac_pct < 5.0:
-            warnings.append("😬 Super low inventory - deals might be scarce")
+            warnings.append("⚠️ Limited inventory availability")
         elif vac_pct > 20.0:
-            warnings.append("👻 High vacancy - area might be struggling")
+            warnings.append("⚠️ High vacancy may indicate market weakness")
 
     if med_home_val and med_income:
         ideal_income = med_home_val / 3.5
         ratio = (med_income / ideal_income) if ideal_income else 0
         if ratio >= 1.0:
-            insights.append("💵 Buyers here can afford our flips!")
+            insights.append("✓ Strong buyer income for resale")
         elif ratio < 0.8:
-            warnings.append("💸 Buyers might struggle to afford these prices")
+            warnings.append("⚠️ Income levels may limit buyer pool")
 
     if dom is not None:
         if dom < 40:
-            insights.append(f"⚡ Hot market - sells in ~{int(dom)} days!")
+            insights.append(f"⚡ Fast-moving market (~{int(dom)} days)")
         elif dom > 90:
-            warnings.append(f"🐌 Slower market - takes ~{int(dom)} days to sell")
+            warnings.append(f"⚠️ Slower market (~{int(dom)} days to sell)")
 
     # Keep cards concise
     insights = insights[:3]
@@ -579,14 +583,19 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             looked = 0
             for t in filtered:
                 if looked >= max_market_lookups: break
-                zip_guess = get_zip_for_tract(t.get("county"), t.get("tract"))
-                if not zip_guess: continue
-                dom = get_market_stats_for_zip(zip_guess).get("median_days_on_market")
-                if dom is not None:
-                    t["days_on_market"] = int(dom)
-                    t["zip_code"] = zip_guess
-                    looked += 1
-                time.sleep(0.15)
+                try:
+                    zip_guess = get_zip_for_tract(t.get("county"), t.get("tract"))
+                    if not zip_guess: continue
+                    market_stats = get_market_stats_for_zip(zip_guess)
+                    dom = market_stats.get("median_days_on_market") if market_stats else None
+                    if dom is not None:
+                        t["days_on_market"] = int(dom)
+                        t["zip_code"] = zip_guess
+                        looked += 1
+                    time.sleep(0.15)
+                except Exception as e:
+                    logging.warning(f"Failed to fetch market data for tract: {e}")
+                    continue
 
         if not do_group:
             top_ops = filtered[:top_n]
