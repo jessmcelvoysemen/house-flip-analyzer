@@ -78,22 +78,38 @@ def tract_id_human(tract_str: str) -> str:
 def neighborhood_label(county_name: str, tract: str) -> str:
     """Map census tracts to recognizable neighborhoods/cities"""
     t = (tract or "").zfill(6)
-    head = int(t[:2]) if t.isdigit() else 0
 
+    # For Marion County, use 4-digit tract codes since they only span 31xx-39xx
     if county_name == "Marion":
-        # Indianapolis - break into recognizable neighborhoods
-        if head <= 5:  return "Indianapolis — Far Eastside"
-        if head <= 12:  return "Indianapolis — Lawrence/Castleton"
-        if head <= 18:  return "Indianapolis — Broad Ripple/Butler"
-        if head <= 25:  return "Indianapolis — Downtown/Near North"
-        if head <= 32:  return "Indianapolis — Fountain Square/Fletcher"
-        if head <= 38:  return "Indianapolis — Irvington/Warren Park"
-        if head <= 45:  return "Indianapolis — Southport/Greenwood area"
-        if head <= 52:  return "Indianapolis — Pike/Northwest"
-        if head <= 65:  return "Indianapolis — Decatur/Southwest"
-        if head <= 75:  return "Indianapolis — Franklin Township/Southeast"
-        if head <= 85:  return "Indianapolis — Perry Township/Southside"
-        return "Indianapolis — Outlying/Suburbs"
+        try:
+            code = int(t[:4]) if len(t) >= 4 else 0
+        except:
+            code = 0
+
+        # Split Marion County (Indianapolis) into ~15 neighborhoods using 4-digit codes
+        if code < 3120:  return "Indianapolis — Near Eastside"
+        if code < 3140:  return "Indianapolis — Eastside"
+        if code < 3160:  return "Indianapolis — Far Eastside"
+        if code < 3180:  return "Indianapolis — Lawrence/Castleton"
+        if code < 3200:  return "Indianapolis — Northeast"
+        if code < 3220:  return "Indianapolis — Broad Ripple/Butler-Tarkington"
+        if code < 3240:  return "Indianapolis — Meridian-Kessler/SoBro"
+        if code < 3260:  return "Indianapolis — Downtown/Mass Ave"
+        if code < 3280:  return "Indianapolis — Near Westside/Haughville"
+        if code < 3300:  return "Indianapolis — Fountain Square/Fletcher Place"
+        if code < 3330:  return "Indianapolis — Irvington/Warren Park"
+        if code < 3360:  return "Indianapolis — Near Southside/Garfield Park"
+        if code < 3400:  return "Indianapolis — Southport/Beech Grove"
+        if code < 3450:  return "Indianapolis — Perry Township"
+        if code < 3500:  return "Indianapolis — Greenwood Area/Center Grove"
+        if code < 3550:  return "Indianapolis — Decatur/Southwest"
+        if code < 3650:  return "Indianapolis — Pike Township/Northwest"
+        if code < 3750:  return "Indianapolis — Washington Township/North"
+        if code < 3850:  return "Indianapolis — Lawrence Township/Northeast"
+        return "Indianapolis — Wayne Township/Southwest"
+
+    # For other counties, use 2-digit codes as before
+    head = int(t[:2]) if t[:2].isdigit() else 0
 
     if county_name == "Hamilton":
         # Wealthy suburbs - break into cities
