@@ -261,6 +261,10 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
         if resp.status_code == 404:
             _dom_cache[zip_code] = None
             return {"median_days_on_market": None}
+        if resp.status_code == 429:
+            logging.warning("⚠️ RapidAPI rate limit exceeded for ZIP %s", zip_code)
+            _dom_cache[zip_code] = None
+            return {"median_days_on_market": None}
         resp.raise_for_status()
         data = resp.json()
 
@@ -595,6 +599,7 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
         filtered = [t for t in all_tracts if (t.get("score") or 0) >= min_score]
 
         # optional market data
+        rate_limit_hit = False
         if include_market_data and RAPIDAPI_KEY:
             logging.info(f"🔍 Fetching market data for up to {max_market_lookups} areas...")
             looked = 0
@@ -612,9 +617,14 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                         logging.info(f"  ✓ ZIP {zip_guess}: {dom} days on market")
                     time.sleep(0.15)
                 except Exception as e:
+                    error_msg = str(e)
+                    if "429" in error_msg:
+                        rate_limit_hit = True
                     logging.warning(f"  ✗ Failed to fetch market data for tract: {e}")
                     continue
             logging.info(f"✅ Market data fetched for {looked} areas")
+            if rate_limit_hit and looked == 0:
+                errors.append("⚠️ RapidAPI rate limit exceeded. Market data unavailable. Please check your RapidAPI quota or try again later.")
 
         if not do_group:
             top_ops = filtered[:top_n]
