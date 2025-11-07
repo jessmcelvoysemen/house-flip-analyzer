@@ -379,7 +379,7 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     else:
         velocity_score = 0.5
 
-    total = 0.40*gap_score + 0.25*vacancy_score + 0.25*income_score + 0.10*velocity_score
+    total = 0.50*gap_score + 0.20*vacancy_score + 0.20*income_score + 0.10*velocity_score
     total_score = round(total * 100, 1)
 
     insights, warnings = [], []
