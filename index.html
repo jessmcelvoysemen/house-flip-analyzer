@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Flip Analyzer</title>
+  <title>Flip Finder</title>
   <style>
     :root {
       --bg1: #6a11cb;
@@ -116,29 +116,29 @@
     <div class="header">
       <div style="font-size:28px">🏠</div>
       <div>
-        <h1>Flip Analyzer</h1>
-        <p>Find the best neighborhoods for flipping houses in Central Indiana</p>
+        <h1>Flip Finder</h1>
+        <p>Data-driven insights for house flipping opportunities in Central Indiana</p>
       </div>
     </div>
 
     <div class="explain">
-      <h3>🧮 How Areas Are Scored (0–100 points)</h3>
+      <h3>🧮 How This Works (0–100 scoring)</h3>
       <div class="grid">
-        <div class="tile"><strong>Buy-Sell Gap (40%)</strong><br/>Best when median value is ~1.3–1.4× your max purchase price.</div>
-        <div class="tile"><strong>Vacancy Rate (25%)</strong><br/>8–15% suggests healthy inventory without distress.</div>
-        <div class="tile"><strong>Buyer Income (25%)</strong><br/>Buyers need ~3–4× income vs. home value.</div>
-        <div class="tile"><strong>Market Speed (10%)</strong><br/>Lower DOM = stronger demand.</div>
+        <div class="tile"><strong>💰 Profit Potential (50%)</strong><br/>Best when median values are 1.3–1.4× max purchase price</div>
+        <div class="tile"><strong>🏚️ Inventory Levels (20%)</strong><br/>8–15% vacancy indicates healthy deal flow</div>
+        <div class="tile"><strong>👥 Buyer Market (20%)</strong><br/>Income levels support resale at expected prices</div>
+        <div class="tile"><strong>⚡ Market Speed (10%)</strong><br/>Lower days on market means faster turnaround</div>
       </div>
     </div>
 
     <div class="controls">
       <div class="form-group">
         <label for="minPrice" class="form-label">Min Purchase Price</label>
-        <input id="minPrice" class="form-input" type="number" value="200000" step="5000" />
+        <input id="minPrice" class="form-input" type="number" value="150000" step="5000" />
       </div>
       <div class="form-group">
         <label for="maxPrice" class="form-label">Max Purchase Price</label>
-        <input id="maxPrice" class="form-input" type="number" value="225000" step="5000" />
+        <input id="maxPrice" class="form-input" type="number" value="250000" step="5000" />
       </div>
       <div class="form-group rehab">
         <label for="rehabBudget" class="form-label">Rehab Budget</label>
@@ -150,12 +150,12 @@
         <label><input id="groupNeighborhoods" type="checkbox" checked /> Group nearby areas</label>
       </div>
       <div class="actions">
-        <button id="analyzeBtn" onclick="analyzeNeighborhoods()">🔎 Find Best Areas</button>
+        <button id="analyzeBtn" onclick="analyzeNeighborhoods()">🔍 Analyze Opportunities</button>
       </div>
     </div>
 
     <div id="results" class="banner">
-      <div class="loading"><div class="spinner"></div><p>Set your inputs, then click “Find Best Areas”.</p></div>
+      <div class="loading"><div class="spinner"></div><p>Configure your search parameters above, then click Analyze</p></div>
     </div>
   </div>
 
@@ -169,19 +169,29 @@
       const resultsDiv = document.getElementById('results');
       const analyzeBtn = document.getElementById('analyzeBtn');
 
-      const minPrice = Number(document.getElementById('minPrice').value || 200000);
-      const maxPrice = Number(document.getElementById('maxPrice').value || 225000);
+      const minPrice = Number(document.getElementById('minPrice').value || 150000);
+      const maxPrice = Number(document.getElementById('maxPrice').value || 250000);
       const rehabBudget = Number(document.getElementById('rehabBudget').value || 40000);
       const includeMarketData = !!(document.getElementById('includeMarketData') && document.getElementById('includeMarketData').checked);
       const groupNeighborhoods = (document.getElementById('groupNeighborhoods') && document.getElementById('groupNeighborhoods').checked) ? 1 : 0;
 
       analyzeBtn.disabled = true;
-      resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing neighborhoods…</p></div>';
+      resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing neighborhoods and market data...</p></div>';
+
+      const targetRangeMin = Math.round(maxPrice * 1.1);
+      const targetRangeMax = Math.round(maxPrice * 1.6);
+      console.log('🔍 Starting analysis with params:', {
+        budget: `$${minPrice.toLocaleString()} - $${maxPrice.toLocaleString()}`,
+        targetMedianRange: `$${targetRangeMin.toLocaleString()} - $${targetRangeMax.toLocaleString()}`,
+        rehabBudget: `$${rehabBudget.toLocaleString()}`,
+        includeMarketData,
+        groupNeighborhoods
+      });
 
       try {
         const params = new URLSearchParams({
           top: '50',
-          min_score: '0',
+          min_score: '0',  // Show all areas (we'll investigate the "only 9" issue separately)
           price_min: String(minPrice),
           price_max: String(maxPrice),
           rehab_budget: String(rehabBudget),
@@ -190,30 +200,70 @@
         });
         const url = API_URL + '?' + params.toString();
 
-        const controller = new AbortController();
-        const timer = setTimeout(function(){ controller.abort(); }, 60000);
-        const res = await fetch(url, { method: 'GET', signal: controller.signal });
-        clearTimeout(timer);
+        // Longer timeout when fetching market data (RapidAPI calls take time)
+        const timeoutMs = includeMarketData ? 120000 : 60000;
 
-        const raw = await res.text();
-        let data; try { data = JSON.parse(raw); } catch (e) { data = null; }
+        // Use fetch with timeout, but handle aborts gracefully
+        let res;
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(function(){
+            console.warn('Request timeout after ' + (timeoutMs/1000) + ' seconds');
+            controller.abort();
+          }, timeoutMs);
+
+          res = await fetch(url, {
+            method: 'GET',
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+          clearTimeout(timer);
+        } catch (fetchError) {
+          if (fetchError.name === 'AbortError') {
+            throw new Error('Request timed out. Try without "Show Days on Market" for faster results.');
+          }
+          throw fetchError;
+        }
 
         if (!res.ok) {
-          const msg = (data && (data.error || data.message)) || raw || ('HTTP ' + res.status);
-          throw new Error(msg);
+          const errorText = await res.text();
+          let errorMsg = 'HTTP ' + res.status;
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMsg = (errorData.error || errorData.message) || errorMsg;
+          } catch (e) {
+            errorMsg = errorText || errorMsg;
+          }
+          throw new Error(errorMsg);
         }
+
+        const raw = await res.text();
+        let data;
+        try {
+          data = JSON.parse(raw);
+          console.log('✅ Received data successfully:', {
+            status: data.status,
+            neighborhoods: data.neighborhoods ? data.neighborhoods.length : 0,
+            opportunities: data.opportunities ? data.opportunities.length : 0,
+            market_data_enabled: data.market_data_enabled
+          });
+        } catch (parseError) {
+          console.error('❌ JSON parse error:', parseError, 'Raw response:', raw.substring(0, 200));
+          throw new Error('Invalid response from server. Check console for details.');
+        }
+
         if (data && data.status === 'error') {
           throw new Error(data.message || 'API returned an error.');
         }
 
-        await sleep(600); // “thinking” moment
+        await sleep(600); // "thinking" moment
         displayResults(data, rehabBudget, maxPrice);
       } catch (err) {
         console.error(err);
         resultsDiv.innerHTML = '<div class="error">'
           + '<h3>⚠️ Error Loading Data</h3>'
           + '<p><strong>Error:</strong> ' + (err.message || err) + '</p>'
-          + '<p style="margin-top:8px; font-size:12px; color:#475569;">If this persists, check App Insights and verify parameter names.</p>'
+          + '<p style="margin-top:8px; font-size:12px; color:#475569;">Please try again or adjust your search parameters.</p>'
           + '</div>';
       } finally {
         analyzeBtn.disabled = false;
@@ -221,18 +271,18 @@
     }
 
     function getScoreClass(score){
-      if(score>=80) return 'excellent';
-      if(score>=70) return 'very-good';
-      if(score>=50) return 'good';
+      if(score>=75) return 'excellent';
+      if(score>=60) return 'very-good';
+      if(score>=45) return 'good';
       if(score>=30) return 'fair';
       return 'poor';
     }
     function getScoreLabel(score){
-      if(score>=80) return 'Excellent';
-      if(score>=70) return 'Very Good';
-      if(score>=50) return 'Good';
-      if(score>=30) return 'Fair';
-      return 'Poor';
+      if(score>=75) return '🔥 Hot!';      // 75+ = A grade
+      if(score>=60) return 'Solid';        // 60-74 = B grade
+      if(score>=45) return 'Worth It';     // 45-59 = C grade
+      if(score>=30) return 'Meh';          // 30-44 = D grade
+      return 'Skip It';                     // <30 = F grade
     }
     function fmtMoney(x){ return (x || x===0) ? ('$'+Number(x).toLocaleString()) : 'N/A'; }
 
@@ -306,19 +356,78 @@
       const grouped = !!data.grouped_by_neighborhood || !!data.neighborhoods;
       const items = grouped ? (data.neighborhoods || []) : (data.opportunities || []);
       if(!items.length){
-        resultsDiv.innerHTML = '<div class="empty"><h2>No areas found</h2><p>Try adjusting your budget range.</p></div>';
+        resultsDiv.innerHTML = '<div class="empty"><h2>No Results Found</h2><p>Try adjusting your price range or search parameters.</p></div>';
         return;
       }
 
       const band = data.price_band_used ? ('$'+Number(data.price_band_used.min).toLocaleString()+'–$'+Number(data.price_band_used.max).toLocaleString()) : null;
+      const totalResults = items.length;
+
+      // Check if any items have market data
+      const hasMarketData = items.some(item => item.days_on_market != null);
+
+      // Calculate how many are in the target range
+      const priceMax = data.price_band_used ? data.price_band_used.max : maxPrice;
+      const targetMin = Math.round(priceMax * 1.1);
+      const targetMax = Math.round(priceMax * 1.6);
+      const inRangeCount = items.filter(item =>
+        item.median_home_value >= targetMin && item.median_home_value <= targetMax
+      ).length;
+
+      console.log('📊 Results analysis:', {
+        totalResults: items.length,
+        inTargetRange: inRangeCount,
+        outOfRange: items.length - inRangeCount,
+        targetRange: `$${targetMin.toLocaleString()} - $${targetMax.toLocaleString()}`,
+        topThree: items.slice(0, 3).map(i => ({
+          name: i.neighborhood,
+          median: `$${(i.median_home_value || 0).toLocaleString()}`,
+          score: i.score,
+          inRange: i.median_home_value >= targetMin && i.median_home_value <= targetMax ? '✓' : '✗'
+        }))
+      });
+
+      console.log('Market data status:', {
+        requested: data.market_data_enabled,
+        found: hasMarketData,
+        sample: items[0]?.days_on_market
+      });
+
       var html = '<div class="summary">'
         + '<div class="summary-item"><div class="summary-label">Tracts Analyzed</div><div class="summary-value">'+(data.total_tracts_analyzed||0)+'</div></div>'
-        + '<div class="summary-item"><div class="summary-label">Areas Found</div><div class="summary-value">'+(data.summary && data.summary.total_meeting_criteria || 0)+'</div></div>'
-        + '<div class="summary-item"><div class="summary-label">Best Score</div><div class="summary-value">'+(data.summary && data.summary.top_score || 0)+'/100</div></div>'
-        + '<div class="summary-item"><div class="summary-label">Average Score</div><div class="summary-value">'+(data.summary && data.summary.avg_score || 0)+'/100</div></div>'
-        + (band ? '<div class="summary-item"><div class="summary-label">Your Purchase Budget</div><div class="summary-value">'+band+'</div></div>' : '')
-        + '</div>'
-        + '<div class="results">';
+        + '<div class="summary-item"><div class="summary-label">Results Found</div><div class="summary-value">'+ totalResults +'</div></div>'
+        + '<div class="summary-item"><div class="summary-label">Top Score</div><div class="summary-value">'+(data.summary && data.summary.top_score || 0)+'/100</div></div>'
+        + '<div class="summary-item"><div class="summary-label">Avg Score</div><div class="summary-value">'+(data.summary && data.summary.avg_score || 0)+'/100</div></div>'
+        + (band ? '<div class="summary-item"><div class="summary-label">Price Range</div><div class="summary-value">'+band+'</div></div>' : '')
+        + '</div>';
+
+      // Show target range for this budget (using variables already calculated above)
+      html += '<div style="background:#e0e7ff; border:2px solid #6366f1; border-radius:12px; padding:12px; margin-top:14px; text-align:center;">'
+        + '<div style="font-weight:600; margin-bottom:4px;">🎯 Target Median Home Value Range for Your Budget</div>'
+        + '<div style="font-size:14px;">Looking for neighborhoods with median values between <strong>'+fmtMoney(targetMin)+'</strong> and <strong>'+fmtMoney(targetMax)+'</strong></div>'
+        + '<div style="font-size:12px; color:#475569; margin-top:4px;">This is ~1.1-1.6× your max purchase price of '+fmtMoney(priceMax)+'</div>'
+        + '</div>';
+
+      // Add market data indicator
+      if (data.market_data_enabled) {
+        if (hasMarketData) {
+          html += '<div style="background:#dcfce7; border:2px solid #16a34a; border-radius:12px; padding:12px; margin-top:14px; text-align:center; font-weight:600;">'
+            + '⚡ Market data enabled - Days on Market shown below where available'
+            + '</div>';
+        } else {
+          html += '<div style="background:#fef3c7; border:2px solid #f59e0b; border-radius:12px; padding:12px; margin-top:14px; text-align:center; font-weight:600;">'
+            + '⚠️ Market data requested but not available for these areas'
+            + '</div>';
+        }
+      }
+
+      if (totalResults > 9) {
+        html += '<div style="background:#fef3c7; border:2px solid #fbbf24; border-radius:12px; padding:12px; margin-top:14px; text-align:center; font-weight:600;">'
+          + '📜 Showing all <strong>'+totalResults+'</strong> results below — scroll down to see them all!'
+          + '</div>';
+      }
+
+      html += '<div class="results">';
 
       items.forEach(function(item, idx){
         const score = item.score || 0;
@@ -341,11 +450,19 @@
         if(grouped && item.label_hint) chips.push('<span class="chip-hint">'+item.label_hint+'</span>');
         const helpersRow = chips.length ? ('<div class="chips">'+chips.join('')+'</div>') : '';
 
+        // Calculate target range for this budget
+        const targetMin = Math.round(maxPrice * 1.1);
+        const targetMax = Math.round(maxPrice * 1.6);
+        const inRange = item.median_home_value >= targetMin && item.median_home_value <= targetMax;
+        const rangeIndicator = inRange
+          ? '<span style="color:#16a34a; font-size:11px; margin-left:4px;">✓ In target range</span>'
+          : '<span style="color:#dc2626; font-size:11px; margin-left:4px;">⚠️ Outside range</span>';
+
         const domRow = (item.days_on_market!=null)
-          ? '<div class="info-row"><span class="info-label">Avg. Days on Market</span><span class="info-value">'+item.days_on_market+' days</span></div>'
+          ? '<div class="info-row" style="background:#e0f2fe; padding:6px; border-radius:6px; margin-top:6px;"><span class="info-label">⚡ Days on Market</span><span class="info-value" style="color:#0369a1; font-weight:700;">'+item.days_on_market+' days</span></div>'
           : '';
         const baseRows =
-          '<div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">'+fmtMoney(item.median_home_value)+'</span></div>'
+          '<div class="info-row"><span class="info-label">Median Home Value</span><span class="info-value">'+fmtMoney(item.median_home_value)+rangeIndicator+'</span></div>'
           + domRow;
 
         var flipCalc = '';

@@ -21,8 +21,8 @@ RAPIDAPI_TEST_URL = os.environ.get(
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
 
-DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "200000"))
-DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "225000"))
+DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "150000"))
+DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "250000"))
 
 CENTRAL_IN_COUNTIES = {
     "Boone": "011",
@@ -54,8 +54,15 @@ CACHE_DURATION_HOURS = 24
 _dom_cache: Dict[str, Optional[int]] = {}
 
 def safe_int(x: Any) -> Optional[int]:
+    """Convert to int, treating Census sentinel values (negatives) as None"""
     try:
-        return int(float(x))
+        val = int(float(x))
+        # Census API uses large negative numbers as sentinel "N/A" values
+        # Common ones: -666666666, -222222222, -999999999, -888888888
+        # Treat any negative as missing data
+        if val < 0:
+            return None
+        return val
     except Exception:
         return None
 
@@ -69,20 +76,88 @@ def tract_id_human(tract_str: str) -> str:
     return f"{t[:4]}.{t[4:]}"
 
 def neighborhood_label(county_name: str, tract: str) -> str:
-    # (very rough bucketing to make group names human)
+    """Map census tracts to recognizable neighborhoods/cities"""
     t = (tract or "").zfill(6)
-    head = int(t[:2]) if t.isdigit() else 0
+
+    # For Marion County, use 4-digit tract codes since they only span 31xx-39xx
     if county_name == "Marion":
-        if head <= 10:  return "Indianapolis — Eastside"
-        if head <= 20:  return "Indianapolis — South/Southeast"
-        if head <= 30:  return "Indianapolis — Far Eastside"
-        if head <= 40:  return "Indianapolis — Near Eastside/Downtown"
-        return "Indianapolis — Outlying Areas"
+        try:
+            code = int(t[:4]) if len(t) >= 4 else 0
+        except:
+            code = 0
+
+        # Split Marion County (Indianapolis) into ~15 neighborhoods using 4-digit codes
+        if code < 3120:  return "Indianapolis — Near Eastside"
+        if code < 3140:  return "Indianapolis — Eastside"
+        if code < 3160:  return "Indianapolis — Far Eastside"
+        if code < 3180:  return "Indianapolis — Lawrence/Castleton"
+        if code < 3200:  return "Indianapolis — Northeast"
+        if code < 3220:  return "Indianapolis — Broad Ripple/Butler-Tarkington"
+        if code < 3240:  return "Indianapolis — Meridian-Kessler/SoBro"
+        if code < 3260:  return "Indianapolis — Downtown/Mass Ave"
+        if code < 3280:  return "Indianapolis — Near Westside/Haughville"
+        if code < 3300:  return "Indianapolis — Fountain Square/Fletcher Place"
+        if code < 3330:  return "Indianapolis — Irvington/Warren Park"
+        if code < 3360:  return "Indianapolis — Near Southside/Garfield Park"
+        if code < 3400:  return "Indianapolis — Southport/Beech Grove"
+        if code < 3450:  return "Indianapolis — Perry Township"
+        if code < 3500:  return "Indianapolis — Greenwood Area/Center Grove"
+        if code < 3550:  return "Indianapolis — Decatur/Southwest"
+        if code < 3650:  return "Indianapolis — Pike Township/Northwest"
+        if code < 3750:  return "Indianapolis — Washington Township/North"
+        if code < 3850:  return "Indianapolis — Lawrence Township/Northeast"
+        return "Indianapolis — Wayne Township/Southwest"
+
+    # For other counties, use 2-digit codes as before
+    head = int(t[:2]) if t[:2].isdigit() else 0
+
+    if county_name == "Hamilton":
+        # Wealthy suburbs - break into cities
+        if head <= 8:  return "Noblesville"
+        if head <= 15:  return "Westfield"
+        if head <= 25:  return "Carmel — North"
+        if head <= 35:  return "Carmel — South/Keystone"
+        if head <= 50:  return "Fishers — North"
+        if head <= 70:  return "Fishers — South/Geist"
+        return "Hamilton County — North suburbs"
+
+    if county_name == "Hendricks":
+        if head <= 15:  return "Avon"
+        if head <= 35:  return "Plainfield"
+        if head <= 50:  return "Brownsburg"
+        return "Danville/Hendricks County"
+
+    if county_name == "Johnson":
+        if head <= 20:  return "Greenwood"
+        if head <= 40:  return "Franklin"
+        if head <= 60:  return "Whiteland/New Whiteland"
+        return "Johnson County — South suburbs"
+
+    if county_name == "Boone":
+        if head <= 20:  return "Zionsville"
+        if head <= 50:  return "Lebanon"
+        return "Boone County — Whitestown area"
+
     if county_name == "Madison":
-        if head <= 10:  return "Anderson — Far West"
-        if head <= 20:  return "Anderson — East Side (North)"
-        return "Anderson — East Side (Central)"
-    return f"{county_name} County — Outlying Areas Subarea"
+        if head <= 10:  return "Anderson — West Side"
+        if head <= 20:  return "Anderson — Downtown/Central"
+        if head <= 35:  return "Anderson — East Side"
+        if head <= 50:  return "Anderson — South"
+        return "Madison County — Pendleton/Chesterfield"
+
+    if county_name == "Shelby":
+        if head <= 30:  return "Shelbyville — Central"
+        return "Shelby County — Outlying"
+
+    if county_name == "Morgan":
+        if head <= 30:  return "Martinsville"
+        return "Morgan County — Outlying"
+
+    if county_name == "Hancock":
+        if head <= 30:  return "Greenfield"
+        return "Hancock County — Outlying"
+
+    return f"{county_name} County"
 
 # --- Listings cache (per ZIP) ---
 _listings_cache = {}  # { zip: {"ts": ISO_UTC, "data": {...}} }
@@ -210,23 +285,59 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
         return {"median_days_on_market": None}
 
 def get_zip_for_tract(county_fips: str, tract: str) -> Optional[str]:
+    """Map census tracts to ZIP codes for market data lookups"""
     t2 = int((tract or "000000").zfill(6)[:2])
+
+    if county_fips == "097":  # Marion (Indianapolis)
+        if t2 <= 5: return "46239"      # Far Eastside
+        if t2 <= 12: return "46226"     # Lawrence/Castleton
+        if t2 <= 18: return "46220"     # Broad Ripple
+        if t2 <= 25: return "46202"     # Downtown
+        if t2 <= 32: return "46203"     # Fountain Square
+        if t2 <= 38: return "46219"     # Irvington
+        if t2 <= 45: return "46227"     # Southport
+        if t2 <= 52: return "46254"     # Pike
+        if t2 <= 65: return "46241"     # Decatur
+        if t2 <= 75: return "46237"     # Franklin Township
+        return "46217"                  # Perry Township
+
     if county_fips == "057":  # Hamilton
-        if t2 <= 11: return "46060"   # Noblesville-ish
-        if t2 <= 20: return "46062"   # Westfield-ish
-        return "46038"                # Fishers-ish
+        if t2 <= 8: return "46060"      # Noblesville
+        if t2 <= 15: return "46074"     # Westfield
+        if t2 <= 25: return "46032"     # Carmel North
+        if t2 <= 35: return "46033"     # Carmel South
+        if t2 <= 50: return "46038"     # Fishers North
+        return "46037"                  # Fishers South/Geist
+
     if county_fips == "063":  # Hendricks
-        return "46123"                 # Avon-ish
+        if t2 <= 15: return "46123"     # Avon
+        if t2 <= 35: return "46168"     # Plainfield
+        return "46112"                  # Brownsburg
+
     if county_fips == "081":  # Johnson
-        return "46143"                 # Greenwood-ishif county_fips == "097":  # Marion
-        head = int((tract or "000000").zfill(6)[:2])
-        if head <= 15: return "46219"
-        if head <= 25: return "46227"
-        return "46218"
+        if t2 <= 20: return "46143"     # Greenwood
+        if t2 <= 40: return "46131"     # Franklin
+        return "46184"                  # Whiteland
+
+    if county_fips == "011":  # Boone
+        if t2 <= 20: return "46077"     # Zionsville
+        return "46052"                  # Lebanon
+
     if county_fips == "095":  # Madison
-        return "46016"
+        if t2 <= 10: return "46011"     # Anderson West
+        if t2 <= 20: return "46016"     # Anderson Downtown
+        if t2 <= 35: return "46013"     # Anderson East
+        return "46017"                  # Anderson South
+
     if county_fips == "145":  # Shelby
-        return "46176"
+        return "46176"                  # Shelbyville
+
+    if county_fips == "109":  # Morgan
+        return "46151"                  # Martinsville
+
+    if county_fips == "059":  # Hancock
+        return "46140"                  # Greenfield
+
     return None
 
 # === SCORING ===
@@ -268,20 +379,20 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     else:
         velocity_score = 0.5
 
-    total = 0.40*gap_score + 0.25*vacancy_score + 0.25*income_score + 0.10*velocity_score
+    total = 0.50*gap_score + 0.20*vacancy_score + 0.20*income_score + 0.10*velocity_score
     total_score = round(total * 100, 1)
 
     insights, warnings = [], []
-    if 1.3 <= gap_ratio <= 1.4: insights.append("Perfect buy-sell gap for profitable flips")
-    elif gap_ratio < 1.1: warnings.append("Limited profit potential - median too close to budget")
-    elif gap_ratio > 1.7: warnings.append("Median significantly above budget - verify distressed inventory exists")
-    if 10 <= vacancy_pct <= 13: insights.append("Healthy inventory levels")
-    elif vacancy_pct < 5: warnings.append("Very low vacancy - limited deal flow")
-    elif vacancy_pct > 20: warnings.append("High vacancy may indicate declining area")
-    if income >= mhv/3.5: insights.append("Strong buyer income for resale")
-    elif income < mhv/4.5: warnings.append("Buyer income may limit resale market")
-    if dom and dom < 40: insights.append(f"Fast-moving market ({dom} days)")
-    elif dom and dom > 90: warnings.append(f"Slower market ({dom} days to sell)")
+    if 1.3 <= gap_ratio <= 1.4: insights.append("💰 Strong profit potential in this price range")
+    elif gap_ratio < 1.1: warnings.append("⚠️ Limited profit margin")
+    elif gap_ratio > 1.7: warnings.append("⚠️ Median value significantly above budget")
+    if 10 <= vacancy_pct <= 13: insights.append("✓ Healthy inventory levels")
+    elif vacancy_pct < 5: warnings.append("⚠️ Limited inventory availability")
+    elif vacancy_pct > 20: warnings.append("⚠️ High vacancy may indicate market weakness")
+    if income >= mhv/3.5: insights.append("✓ Strong buyer income for resale")
+    elif income < mhv/4.5: warnings.append("⚠️ Income levels may limit buyer pool")
+    if dom and dom < 40: insights.append(f"⚡ Fast-moving market (~{dom} days)")
+    elif dom and dom > 90: warnings.append(f"⚠️ Slower market (~{dom} days to sell)")
 
     return {
         "score": total_score,
@@ -311,7 +422,11 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     med_home_val = pop_weighted_avg([(r.get("median_home_value"), r.get("total_pop") or 0) for r in rows])
     med_income   = pop_weighted_avg([(r.get("median_income"), r.get("total_pop") or 0) for r in rows])
     vac_pct      = pop_weighted_avg([(r.get("vacancy_pct"), r.get("total_pop") or 0) for r in rows])
-    dom          = pop_weighted_avg([(r.get("days_on_market"), r.get("total_pop") or 0) for r in rows])
+
+    # Only aggregate DOM if at least one tract in group has it
+    dom_values = [(r.get("days_on_market"), r.get("total_pop") or 0) for r in rows if r.get("days_on_market") is not None]
+    dom = pop_weighted_avg(dom_values) if dom_values else None
+
     gap_ratio    = pop_weighted_avg([(r.get("gap_ratio"), r.get("total_pop") or 0) for r in rows])
     area_score   = pop_weighted_avg([(r.get("score"), r.get("total_pop") or 0) for r in rows])
 
@@ -321,33 +436,33 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     if gap_ratio is not None:
         if 1.3 <= gap_ratio <= 1.4:
-            insights.append("Perfect buy-sell gap for profitable flips")
+            insights.append("💰 Strong profit potential in this price range")
         elif gap_ratio < 1.1:
-            warnings.append("Limited profit potential — median too close to budget")
+            warnings.append("⚠️ Limited profit margin")
         elif gap_ratio > 1.7:
-            warnings.append("Median significantly above budget — verify distressed inventory exists")
+            warnings.append("⚠️ Median value significantly above budget")
 
     if vac_pct is not None:
         if 8.0 <= vac_pct <= 15.0:
-            insights.append("Healthy inventory levels")
+            insights.append("✓ Healthy inventory levels")
         elif vac_pct < 5.0:
-            warnings.append("Very low vacancy — limited deal flow")
+            warnings.append("⚠️ Limited inventory availability")
         elif vac_pct > 20.0:
-            warnings.append("High vacancy may indicate declining area")
+            warnings.append("⚠️ High vacancy may indicate market weakness")
 
     if med_home_val and med_income:
         ideal_income = med_home_val / 3.5
         ratio = (med_income / ideal_income) if ideal_income else 0
         if ratio >= 1.0:
-            insights.append("Strong buyer income for resale")
+            insights.append("✓ Strong buyer income for resale")
         elif ratio < 0.8:
-            warnings.append("Buyer income may limit resale market")
+            warnings.append("⚠️ Income levels may limit buyer pool")
 
     if dom is not None:
         if dom < 40:
-            insights.append(f"Fast-moving market ({int(dom)} days)")
+            insights.append(f"⚡ Fast-moving market (~{int(dom)} days)")
         elif dom > 90:
-            warnings.append(f"Slower market ({int(dom)} days to sell)")
+            warnings.append(f"⚠️ Slower market (~{int(dom)} days to sell)")
 
     # Keep cards concise
     insights = insights[:3]
@@ -481,17 +596,25 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
 
         # optional market data
         if include_market_data and RAPIDAPI_KEY:
+            logging.info(f"🔍 Fetching market data for up to {max_market_lookups} areas...")
             looked = 0
             for t in filtered:
                 if looked >= max_market_lookups: break
-                zip_guess = get_zip_for_tract(t.get("county"), t.get("tract"))
-                if not zip_guess: continue
-                dom = get_market_stats_for_zip(zip_guess).get("median_days_on_market")
-                if dom is not None:
-                    t["days_on_market"] = int(dom)
-                    t["zip_code"] = zip_guess
-                    looked += 1
-                time.sleep(0.15)
+                try:
+                    zip_guess = get_zip_for_tract(t.get("county"), t.get("tract"))
+                    if not zip_guess: continue
+                    market_stats = get_market_stats_for_zip(zip_guess)
+                    dom = market_stats.get("median_days_on_market") if market_stats else None
+                    if dom is not None:
+                        t["days_on_market"] = int(dom)
+                        t["zip_code"] = zip_guess
+                        looked += 1
+                        logging.info(f"  ✓ ZIP {zip_guess}: {dom} days on market")
+                    time.sleep(0.15)
+                except Exception as e:
+                    logging.warning(f"  ✗ Failed to fetch market data for tract: {e}")
+                    continue
+            logging.info(f"✅ Market data fetched for {looked} areas")
 
         if not do_group:
             top_ops = filtered[:top_n]
@@ -515,6 +638,37 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
         for t in filtered:
             key = f"{t.get('county_name')}|{t.get('neighborhood')}"
             groups.setdefault(key, []).append(t)
+
+        print("\n" + "="*70)
+        print(f"📊 NEIGHBORHOOD GROUPING BREAKDOWN")
+        print("="*70)
+        print(f"Total tracts analyzed: {len(all_tracts)}")
+        print(f"Tracts after filtering: {len(filtered)}")
+        print(f"Number of neighborhood groups created: {len(groups)}")
+
+        # Show tract code distribution for Marion County to help debug
+        marion_tracts = [t for t in filtered if t.get('county_name') == 'Marion']
+        if marion_tracts:
+            tract_codes = sorted([int(t.get('tract', '0').zfill(6)[:2]) for t in marion_tracts if t.get('tract')])
+            print(f"\nMarion County tract code distribution ({len(marion_tracts)} tracts):")
+            print(f"  Min tract code: {min(tract_codes) if tract_codes else 'N/A'}")
+            print(f"  Max tract code: {max(tract_codes) if tract_codes else 'N/A'}")
+            from collections import Counter
+            code_counts = Counter(tract_codes)
+            print(f"  Tract codes present: {sorted(code_counts.keys())}")
+
+        print("\nNeighborhoods found:")
+        for key in sorted(groups.keys()):
+            county, neigh = key.split("|", 1)
+            tract_count = len(groups[key])
+            avg_score = sum(t.get('score', 0) for t in groups[key]) / tract_count if tract_count > 0 else 0
+            print(f"  • {neigh} ({county}): {tract_count} tracts, avg score: {avg_score:.1f}")
+        print("="*70 + "\n")
+
+        logging.info(f"📊 Grouped {len(filtered)} tracts into {len(groups)} neighborhoods:")
+        for key in sorted(groups.keys()):
+            county, neigh = key.split("|", 1)
+            logging.info(f"  • {neigh} ({county}): {len(groups[key])} tracts")
 
         neighborhoods: List[Dict[str, Any]] = []
         for key, rows in groups.items():
