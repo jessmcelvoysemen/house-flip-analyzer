@@ -272,13 +272,12 @@
 
         if (isRateLimitError) {
           resultsDiv.innerHTML = '<div class="error">'
-            + '<h3>⚠️ RapidAPI Rate Limit Exceeded</h3>'
-            + '<p><strong>Days on Market</strong> feature requires API calls that have reached their quota limit.</p>'
-            + '<p style="margin-top:12px;">Your options:</p>'
+            + '<h3>🏠 Days on Market Temporarily Unavailable</h3>'
+            + '<p>The free connection to Realtor.com that calculates Days on Market has hit its daily limit.</p>'
+            + '<p style="margin-top:12px;"><strong>No worries!</strong> You can:</p>'
             + '<ul style="margin:8px 0; padding-left:20px;">'
-            + '<li>Wait until tomorrow when your quota resets</li>'
-            + '<li>Upgrade your RapidAPI plan at <a href="https://rapidapi.com/dashboard" target="_blank" style="color:#6366f1;">rapidapi.com/dashboard</a></li>'
-            + '<li><strong>Or search without Days on Market:</strong></li>'
+            + '<li>Search without Days on Market (it\'ll just exclude DOM from the calculation)</li>'
+            + '<li>Try again tomorrow when the limit resets</li>'
             + '</ul>'
             + '<button onclick="document.getElementById(\'includeMarketData\').checked=false; document.getElementById(\'analyzeBtn\').click();" '
             + 'style="background:#6366f1; color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; margin-top:8px;">'
