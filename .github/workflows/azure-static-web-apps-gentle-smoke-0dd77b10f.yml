@@ -30,6 +30,7 @@ jobs:
           app_location: "/" # Location of your index.html
           api_location: "api" # Location of your Python functions
           output_location: "" # Leave empty since you don't have a build process
+          skip_app_build: true # Skip build for static HTML app
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
