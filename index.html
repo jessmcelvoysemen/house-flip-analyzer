@@ -401,10 +401,7 @@
         + (band ? '<div class="summary-item"><div class="summary-label">Price Range</div><div class="summary-value">'+band+'</div></div>' : '')
         + '</div>';
 
-      // Show target range for this budget
-      const priceMax = data.price_band_used ? data.price_band_used.max : maxPrice;
-      const targetMin = Math.round(priceMax * 1.1);
-      const targetMax = Math.round(priceMax * 1.6);
+      // Show target range for this budget (using variables already calculated above)
       html += '<div style="background:#e0e7ff; border:2px solid #6366f1; border-radius:12px; padding:12px; margin-top:14px; text-align:center;">'
         + '<div style="font-weight:600; margin-bottom:4px;">🎯 Target Median Home Value Range for Your Budget</div>'
         + '<div style="font-size:14px;">Looking for neighborhoods with median values between <strong>'+fmtMoney(targetMin)+'</strong> and <strong>'+fmtMoney(targetMax)+'</strong></div>'
