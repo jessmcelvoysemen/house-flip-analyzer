@@ -629,6 +629,18 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
         print(f"Total tracts analyzed: {len(all_tracts)}")
         print(f"Tracts after filtering: {len(filtered)}")
         print(f"Number of neighborhood groups created: {len(groups)}")
+
+        # Show tract code distribution for Marion County to help debug
+        marion_tracts = [t for t in filtered if t.get('county_name') == 'Marion']
+        if marion_tracts:
+            tract_codes = sorted([int(t.get('tract', '0').zfill(6)[:2]) for t in marion_tracts if t.get('tract')])
+            print(f"\nMarion County tract code distribution ({len(marion_tracts)} tracts):")
+            print(f"  Min tract code: {min(tract_codes) if tract_codes else 'N/A'}")
+            print(f"  Max tract code: {max(tract_codes) if tract_codes else 'N/A'}")
+            from collections import Counter
+            code_counts = Counter(tract_codes)
+            print(f"  Tract codes present: {sorted(code_counts.keys())}")
+
         print("\nNeighborhoods found:")
         for key in sorted(groups.keys()):
             county, neigh = key.split("|", 1)
