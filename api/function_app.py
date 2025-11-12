@@ -21,6 +21,24 @@ RAPIDAPI_TEST_URL = os.environ.get(
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
 
+# Recent Starbucks openings in Central Indiana (2024-2025)
+# Used as a positive indicator for neighborhood growth and retail investment
+STARBUCKS_RECENT_OPENINGS = {
+    "Mooresville",
+    "Noblesville",
+    "Westfield",
+    "Zionsville",
+    "Greenfield",
+    "New Palestine",
+    "Brownsburg",
+    "Pendleton",
+    "Greenwood",
+    "Anderson",
+    # Indianapolis locations - mapping to specific neighborhoods
+    "Indianapolis — Broad Ripple/Butler-Tarkington",  # 62nd & Keystone
+    "Indianapolis — Southport/Beech Grove",  # Southport & Franklin Rd
+}
+
 DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "150000"))
 DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "250000"))
 
@@ -75,6 +93,30 @@ def tract_id_human(tract_str: str) -> str:
     t = tract_str.zfill(6)
     return f"{t[:4]}.{t[4:]}"
 
+def has_recent_starbucks(neighborhood: str, county_name: str) -> bool:
+    """Check if neighborhood/city has a recent Starbucks opening (2024-2025)"""
+    # Check full neighborhood name
+    if neighborhood in STARBUCKS_RECENT_OPENINGS:
+        return True
+
+    # Check county-level cities (for suburbs)
+    city_mappings = {
+        "Hamilton": ["Noblesville", "Westfield"],
+        "Boone": ["Zionsville"],
+        "Hancock": ["Greenfield", "New Palestine"],
+        "Hendricks": ["Brownsburg"],
+        "Madison": ["Pendleton", "Anderson"],
+        "Johnson": ["Greenwood"],
+        "Morgan": ["Mooresville"],
+    }
+
+    cities = city_mappings.get(county_name, [])
+    for city in cities:
+        if city in neighborhood or city in STARBUCKS_RECENT_OPENINGS:
+            return True
+
+    return False
+
 def neighborhood_label(county_name: str, tract: str) -> str:
     """Map census tracts to recognizable neighborhoods/cities"""
     t = (tract or "").zfill(6)
@@ -87,25 +129,26 @@ def neighborhood_label(county_name: str, tract: str) -> str:
             code = 0
 
         # Split Marion County (Indianapolis) into ~15 neighborhoods using 4-digit codes
+        # Fixed ranges to align with ZIP code mapping (especially 46203 Fountain Square)
         if code < 3120:  return "Indianapolis — Near Eastside"
         if code < 3140:  return "Indianapolis — Eastside"
         if code < 3160:  return "Indianapolis — Far Eastside"
         if code < 3180:  return "Indianapolis — Lawrence/Castleton"
-        if code < 3200:  return "Indianapolis — Northeast"
-        if code < 3220:  return "Indianapolis — Broad Ripple/Butler-Tarkington"
+        if code < 3190:  return "Indianapolis — Broad Ripple/Butler-Tarkington"
+        if code < 3220:  return "Indianapolis — Northeast"
         if code < 3240:  return "Indianapolis — Meridian-Kessler/SoBro"
         if code < 3260:  return "Indianapolis — Downtown/Mass Ave"
         if code < 3280:  return "Indianapolis — Near Westside/Haughville"
-        if code < 3300:  return "Indianapolis — Fountain Square/Fletcher Place"
-        if code < 3330:  return "Indianapolis — Irvington/Warren Park"
-        if code < 3360:  return "Indianapolis — Near Southside/Garfield Park"
-        if code < 3400:  return "Indianapolis — Southport/Beech Grove"
-        if code < 3450:  return "Indianapolis — Perry Township"
-        if code < 3500:  return "Indianapolis — Greenwood Area/Center Grove"
-        if code < 3550:  return "Indianapolis — Decatur/Southwest"
-        if code < 3650:  return "Indianapolis — Pike Township/Northwest"
-        if code < 3750:  return "Indianapolis — Washington Township/North"
-        if code < 3850:  return "Indianapolis — Lawrence Township/Northeast"
+        if code < 3330:  return "Indianapolis — Fountain Square/Fletcher Place"
+        if code < 3360:  return "Indianapolis — Irvington/Warren Park"
+        if code < 3390:  return "Indianapolis — Near Southside/Garfield Park"
+        if code < 3450:  return "Indianapolis — Southport/Beech Grove"
+        if code < 3500:  return "Indianapolis — Perry Township"
+        if code < 3550:  return "Indianapolis — Greenwood Area/Center Grove"
+        if code < 3600:  return "Indianapolis — Decatur/Southwest"
+        if code < 3700:  return "Indianapolis — Pike Township/Northwest"
+        if code < 3800:  return "Indianapolis — Washington Township/North"
+        if code < 3900:  return "Indianapolis — Lawrence Township/Northeast"
         return "Indianapolis — Wayne Township/Southwest"
 
     # For other counties, use 2-digit codes as before
@@ -351,6 +394,8 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     income = tract.get("median_income") or 0
     vacancy_pct = tract.get("vacancy_pct") or 0.0
     dom = tract.get("days_on_market")
+    neighborhood = tract.get("neighborhood", "")
+    county_name = tract.get("county_name", "")
 
     # Gap score
     gap_ratio = (mhv / price_max) if price_max > 0 else 0
@@ -383,10 +428,20 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     else:
         velocity_score = 0.5
 
+    # Base score calculation
     total = 0.50*gap_score + 0.20*vacancy_score + 0.20*income_score + 0.10*velocity_score
-    total_score = round(total * 100, 1)
+
+    # Starbucks bonus: +3 points for recent commercial investment
+    starbucks_bonus = 0.0
+    has_starbucks = has_recent_starbucks(neighborhood, county_name)
+    if has_starbucks:
+        starbucks_bonus = 3.0
+
+    total_score = round((total * 100) + starbucks_bonus, 1)
 
     insights, warnings = [], []
+    if has_starbucks:
+        insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
     if 1.3 <= gap_ratio <= 1.4: insights.append("💰 Strong profit potential in this price range")
     elif gap_ratio < 1.1: warnings.append("⚠️ Limited profit margin")
     elif gap_ratio > 1.7: warnings.append("⚠️ Median value significantly above budget")
@@ -405,6 +460,8 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
         "vacancy_score": round(vacancy_score * 100, 1),
         "income_score": round(income_score * 100, 1),
         "velocity_score": round(velocity_score * 100, 1),
+        "starbucks_bonus": starbucks_bonus,
+        "has_starbucks": has_starbucks,
         "insights": insights,
         "warnings": warnings,
     }
@@ -434,9 +491,16 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     gap_ratio    = pop_weighted_avg([(r.get("gap_ratio"), r.get("total_pop") or 0) for r in rows])
     area_score   = pop_weighted_avg([(r.get("score"), r.get("total_pop") or 0) for r in rows])
 
+    # Check if any tract in the group has Starbucks (should be consistent across group)
+    has_starbucks = any(r.get("has_starbucks", False) for r in rows)
+
     # 👉 Derive messages from the aggregated metrics (not by unioning tract messages)
     insights: List[str] = []
     warnings: List[str] = []
+
+    # Starbucks indicator comes first for visibility
+    if has_starbucks:
+        insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
 
     if gap_ratio is not None:
         if 1.3 <= gap_ratio <= 1.4:
@@ -486,6 +550,7 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "gap_ratio": round(gap_ratio, 2) if gap_ratio is not None else None,
         "total_pop": total_pop,
         "score": round(area_score, 1) if area_score is not None else 0.0,
+        "has_starbucks": has_starbucks,
         "insights": insights,
         "warnings": warnings,
         "member_tracts": members,
@@ -710,9 +775,14 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                         vac_pct = neighborhood.get("vacancy_pct")
                         med_home_val = neighborhood.get("median_home_value")
                         med_income = neighborhood.get("median_income")
+                        has_starbucks = neighborhood.get("has_starbucks", False)
 
                         insights = []
                         warnings = []
+
+                        # Preserve Starbucks indicator (comes first for visibility)
+                        if has_starbucks:
+                            insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
 
                         if gap_ratio is not None:
                             if 1.3 <= gap_ratio <= 1.4:
