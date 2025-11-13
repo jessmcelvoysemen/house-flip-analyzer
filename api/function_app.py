@@ -35,8 +35,266 @@ STARBUCKS_RECENT_OPENINGS = {
     "Greenwood",
     "Anderson",
     # Indianapolis locations - mapping to specific neighborhoods
-    "Indianapolis — Broad Ripple/Meridian-Kessler (North)",  # 62nd & Keystone
-    "Indianapolis — Southport/Beech Grove (South)",  # Southport & Franklin Rd
+    "Broad Ripple",  # 62nd & Keystone
+    "Beech Grove",  # Southport & Franklin Rd
+}
+
+# Google Maps neighborhood mapping (generated 2025-11-13)
+# Official neighborhood names from Google Maps Geocoding API
+GOOGLE_MAPS_NEIGHBORHOODS = {
+    "310104": "Park 100",
+    "310105": "Park 100",
+    "310106": "Westchester Estates",
+    "310108": "Eagle Creek",
+    "310110": "Eagle Creek",
+    "310111": "Eagle Creek",
+    "310112": "Traders Point",
+    "310113": "Eagle Creek",
+    "310201": "New Augusta",
+    "310203": "Fieldstone and Brookstone",
+    "310204": "Augusta / New Augusta",
+    "310305": "Northwest High School",
+    "310306": "International Marketplace",
+    "310308": "Guion Lakes",
+    "310309": "Snacks / Guion Creek",
+    "310310": "Liberty Creek North",
+    "310311": "Snacks / Guion Creek",
+    "310312": "Deer Creek",
+    "320105": "Misty Lake",
+    "320106": "St Vincent / Greenbriar",
+    "320107": "College Commons",
+    "320108": "St Vincent / Greenbriar",
+    "320109": "St Vincent / Greenbriar",
+    "320202": "North Central",
+    "320203": "Sherwood Forest",
+    "320205": "Keystone at the Crossing",
+    "320206": "Driftwood Hills",
+    "320301": "Clearwater",
+    "320303": "Castleton",
+    "320305": "Ivy Hills",
+    "320306": "Allisonville",
+    "320400": "Allisonville",
+    "320500": "Glendale",
+    "320600": "Ravenswood",
+    "320700": "Warfleigh",
+    "320800": "Meridian Hills/Williams Creek",
+    "320901": "Delaware Trails",
+    "320902": "Crooked Creek",
+    "320903": "Crooked Creek",
+    "321001": "Crooked Creek",
+    "321002": "Crooked Creek Civic League",
+    "321100": "Highland-Kessler",
+    "321200": "Warfleigh",
+    "321300": "Broad Ripple",
+    "321400": "Millersville",
+    "321600": "Devon",
+    "321700": "Canterbury-Chatard",
+    "321800": "Meridian-Kessler",
+    "321900": "Butler-Tarkington",
+    "322000": "Butler-Tarkington",
+    "322100": "Meridian-Kessler",
+    "322200": "Oliver Johnson's Woods",
+    "322300": "Meridian-Kessler",
+    "322400": "Fairgrounds",
+    "322500": "Fairgrounds",
+    "322601": "Meadows",
+    "322602": "Meadows",
+    "322700": "Forest Manor",
+    "330103": "Castleton",
+    "330105": "Castleton",
+    "330106": "I-69/Fall Creek",
+    "330107": "I-69/Fall Creek",
+    "330108": "Geist",
+    "330109": "I-69/Fall Creek",
+    "330203": "Geist",
+    "330204": "Lawrence-Fort Ben-Oaklandon",
+    "330206": "Lawrence Woods",
+    "330208": "Bay Ridge",
+    "330210": "Lawrence",
+    "330211": "Far Eastside",
+    "330212": "Lawrence",
+    "330213": "Oakland Hills at Geist",
+    "330401": "Devonshire",
+    "330500": "Devington",
+    "330600": "Lawrence",
+    "330701": "Lawrence",
+    "330702": "Lawrence",
+    "330803": "Far Eastside",
+    "330804": "Far Eastside",
+    "330805": "Lawrence",
+    "330806": "Far Eastside",
+    "330900": "Devington",
+    "331000": "Devington",
+    "340101": "Chapel Glen",
+    "340102": "Chapel Hill Village",
+    "340108": "Northwest High School",
+    "340111": "Key Meadows",
+    "340112": "Key Meadows",
+    "340113": "Chapel Hill / Ben Davis",
+    "340114": "Key Meadows",
+    "340115": "Aspen Ridge",
+    "340201": "Northwest High School",
+    "340202": "Speedway",
+    "340301": "Eagledale",
+    "340302": "Eagledale",
+    "340400": "Eagledale",
+    "340500": "Venerable Flackville",
+    "340600": "Marian - Cold Springs",
+    "340700": "Speedway",
+    "340800": "Speedway",
+    "340901": "Westridge",
+    "340903": "Speedway",
+    "340904": "Speedway",
+    "341000": "Speedway",
+    "341100": "Near Westside",
+    "341200": "West Side",
+    "341600": "Haughville",
+    "341701": "Near Westside",
+    "341702": "Garden City",
+    "341902": "Chapel Hill / Ben Davis",
+    "341903": "Garden City",
+    "341904": "Garden City",
+    "342000": "Chapel Hill / Ben Davis",
+    "342101": "Chapel Hill / Ben Davis",
+    "342200": "Park Fletcher",
+    "342300": "Mars Hill",
+    "342400": "West Indianapolis",
+    "342500": "Stout Field",
+    "342600": "West Indianapolis",
+    "350100": "Near NW - Riverside",
+    "350300": "Crown Hill",
+    "350400": "Mapleton - Fall Creek",
+    "350500": "Meadows",
+    "350600": "Forest Manor",
+    "350700": "Martindale - Brightwood",
+    "350800": "Martindale - Brightwood",
+    "350900": "Mapleton - Fall Creek",
+    "351000": "Crown Hill",
+    "351200": "Near NW - Riverside",
+    "351500": "Highland Vicinity",
+    "351600": "Fall Creek Place",
+    "351700": "Reagan Park",
+    "351900": "Martindale - Brightwood",
+    "352100": "Martindale - Brightwood",
+    "352300": "Martindale - Brightwood",
+    "352400": "Near Eastside",
+    "352500": "Little Flower",
+    "352600": "Near Eastside",
+    "352700": "Windsor Park",
+    "352800": "Hillside",
+    "353300": "Near Northside",
+    "353500": "Near NW - Riverside",
+    "353600": "Riverside",
+    "354201": "Lockerbie Square",
+    "354202": "Chatham-Arch",
+    "354400": "Holy Cross",
+    "354500": "Near Eastside",
+    "354700": "Near Eastside",
+    "354800": "Near Eastside",
+    "354900": "Near Eastside",
+    "355000": "Englewood",
+    "355100": "Tuxedo Park",
+    "355300": "Emerson Heights",
+    "355400": "Bosart Brown",
+    "355500": "Christian Park",
+    "355600": "Christian Park",
+    "355700": "Christian Park",
+    "355900": "Fountain Square",
+    "356200": "Fletcher Place",
+    "356400": "Near Westside",
+    "356900": "Old Southside",
+    "357000": "Bates-Hendricks",
+    "357100": "Fountain Square",
+    "357200": "Fountain Square",
+    "357300": "Near Southeast",
+    "357400": "Near Southeast",
+    "357500": "Beech Grove",
+    "357601": "Bean Creek",
+    "357602": "Near Southeast",
+    "357800": "Near Southside",
+    "357900": "Garfield Park-South Neighborhood",
+    "358000": "Garfield Park",
+    "358100": "West Indianapolis",
+    "360101": "Eastside",
+    "360102": "Arlington Woods",
+    "360201": "Arlington Woods",
+    "360202": "Far Eastside",
+    "360301": "Far Eastside",
+    "360302": "Arlington Woods",
+    "360401": "Far Eastside",
+    "360402": "Far Eastside",
+    "360405": "Far Eastside",
+    "360406": "Far Eastside",
+    "360407": "Far Eastside",
+    "360501": "East Warren",
+    "360502": "East Warren",
+    "360601": "East Warren",
+    "360602": "East Gate",
+    "360700": "Irvington",
+    "360800": "Warren",
+    "360900": "Community Heights",
+    "361000": "Irvington",
+    "361100": "Irvington Historic District",
+    "361200": "Irvington",
+    "361300": "East Gate",
+    "361401": "Raymond Park",
+    "361402": "Glenroy Village",
+    "361601": "Southeast Warren",
+    "361602": "Southeast Warren",
+    "370201": "Mars Hill",
+    "370203": "Mars Hill",
+    "370204": "Mars Hill",
+    "370303": "Camby",
+    "370304": "West Newton",
+    "370305": "Valley Mills",
+    "370306": "Valley Mills",
+    "380101": "Glenns Valley",
+    "380102": "Sunshine Gardens",
+    "380103": "Sunshine Gardens",
+    "380200": "North Perry",
+    "380301": "University Heights",
+    "380302": "Carson Heights",
+    "380402": "Beech Grove",
+    "380403": "Beech Grove",
+    "380404": "University Heights",
+    "380501": "Edgewood",
+    "380502": "University Heights and Rosedale Hills",
+    "380600": "Southdale",
+    "380700": "Southdale",
+    "380800": "Edgewood",
+    "380901": "Perry Manor",
+    "380902": "I-65 / South Emerson",
+    "381002": "Homecroft",
+    "381003": "Southport",
+    "381004": "South Perry",
+    "381101": "Richling Acres",
+    "381102": "Linden Wood",
+    "381203": "Winchester Village",
+    "381204": "South Perry",
+    "381205": "Richmond Hill",
+    "381206": "Hill Valley Estates",
+    "381207": "Hill Valley Estates",
+    "390102": "Beech Grove",
+    "390103": "Poplar Grove",
+    "390104": "Five Points",
+    "390200": "New Bethel",
+    "390300": "Acton",
+    "390405": "South Franklin",
+    "390406": "Galludet",
+    "390407": "South Franklin",
+    "390408": "Galludet",
+    "390409": "South Franklin",
+    "390410": "I-65 / South Emerson",
+    "390411": "I-65 / South Emerson",
+    "390500": "Crown Hill",
+    "390601": "Brendonwood",
+    "390602": "Lawrence-Fort Ben-Oaklandon",
+    "390700": "Hawthorne",
+    "390801": "Airport",
+    "390802": "Airport",
+    "390900": "Kennedy King",
+    "391001": "Downtown",
+    "391002": "Mile Square",
 }
 
 DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "150000"))
@@ -118,34 +376,39 @@ def has_recent_starbucks(neighborhood: str, county_name: str) -> bool:
     return False
 
 def neighborhood_label(county_name: str, tract: str) -> str:
-    """Map census tracts to recognizable neighborhoods/cities"""
+    """Map census tracts to recognizable neighborhoods/cities using Google Maps data"""
     t = (tract or "").zfill(6)
 
-    # For Marion County, use 4-digit tract codes since they only span 31xx-39xx
+    # For Marion County (Indianapolis), use Google Maps official neighborhood names
     if county_name == "Marion":
+        # Check Google Maps data first (most accurate!)
+        google_neighborhood = GOOGLE_MAPS_NEIGHBORHOODS.get(t)
+        if google_neighborhood:
+            return google_neighborhood
+
+        # Fallback to manual mapping if Google Maps doesn't have this tract
         try:
             code = int(t[:4]) if len(t) >= 4 else 0
         except:
             code = 0
 
-        # Split Marion County (Indianapolis) with neighborhood names aligned to ZIP code boundaries
-        # CRITICAL FIX: ALL tracts 3200-3299 (t2=32) map to ZIP 46203 = Near Southeast
-        if code < 3120:  return "Indianapolis — Near Eastside"
-        if code < 3140:  return "Indianapolis — Eastside"
-        if code < 3160:  return "Indianapolis — Far Eastside"
-        if code < 3180:  return "Indianapolis — Lawrence/Castleton (Northeast)"
-        if code < 3200:  return "Indianapolis — Broad Ripple/Meridian-Kessler (North)"
-        if code < 3300:  return "Indianapolis — Near Southeast/Fountain Square"
-        if code < 3320:  return "Indianapolis — Near Westside/Haughville"
-        if code < 3380:  return "Indianapolis — Irvington/Warren Park (East)"
-        if code < 3420:  return "Indianapolis — Near Southside/Garfield Park"
-        if code < 3480:  return "Indianapolis — Southport/Beech Grove (South)"
-        if code < 3540:  return "Indianapolis — Perry Township (South)"
-        if code < 3600:  return "Indianapolis — Decatur/Southwest"
-        if code < 3680:  return "Indianapolis — Pike Township/Northwest"
-        if code < 3780:  return "Indianapolis — Washington Township (North)"
-        if code < 3880:  return "Indianapolis — Lawrence Township (Northeast)"
-        return "Indianapolis — Wayne Township/Southwest"
+        # Fallback ranges (shouldn't hit these often with Google Maps data)
+        if code < 3120:  return "Near Eastside"
+        if code < 3140:  return "Eastside"
+        if code < 3160:  return "Far Eastside"
+        if code < 3180:  return "Lawrence/Castleton"
+        if code < 3200:  return "Broad Ripple/Meridian-Kessler"
+        if code < 3300:  return "Near Southeast/Fountain Square"
+        if code < 3320:  return "Near Westside/Haughville"
+        if code < 3380:  return "Irvington/Warren Park"
+        if code < 3420:  return "Near Southside/Garfield Park"
+        if code < 3480:  return "Southport/Beech Grove"
+        if code < 3540:  return "Perry Township"
+        if code < 3600:  return "Decatur/Southwest"
+        if code < 3680:  return "Pike Township/Northwest"
+        if code < 3780:  return "Washington Township"
+        if code < 3880:  return "Lawrence Township"
+        return "Wayne Township/Southwest"
 
     # For other counties, use 2-digit codes as before
     head = int(t[:2]) if t[:2].isdigit() else 0
