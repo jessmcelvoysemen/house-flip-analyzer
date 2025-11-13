@@ -35,7 +35,7 @@ STARBUCKS_RECENT_OPENINGS = {
     "Greenwood",
     "Anderson",
     # Indianapolis locations - mapping to specific neighborhoods
-    "Indianapolis — Broad Ripple/Butler-Tarkington (North)",  # 62nd & Keystone
+    "Indianapolis — Broad Ripple/Meridian-Kessler (North)",  # 62nd & Keystone
     "Indianapolis — Southport/Beech Grove (South)",  # Southport & Franklin Rd
 }
 
@@ -128,17 +128,15 @@ def neighborhood_label(county_name: str, tract: str) -> str:
         except:
             code = 0
 
-        # Split Marion County (Indianapolis) with neighborhood names and accurate cardinal directions
-        # Fixed: 46203 is Southeast (Fountain Square area), not Northeast
+        # Split Marion County (Indianapolis) with neighborhood names aligned to ZIP code boundaries
+        # CRITICAL FIX: ALL tracts 3200-3299 (t2=32) map to ZIP 46203 = Near Southeast
         if code < 3120:  return "Indianapolis — Near Eastside"
         if code < 3140:  return "Indianapolis — Eastside"
         if code < 3160:  return "Indianapolis — Far Eastside"
         if code < 3180:  return "Indianapolis — Lawrence/Castleton (Northeast)"
-        if code < 3200:  return "Indianapolis — Broad Ripple/Butler-Tarkington (North)"
-        if code < 3240:  return "Indianapolis — Meridian-Kessler/SoBro (North Central)"
-        if code < 3260:  return "Indianapolis — Downtown/Mass Ave"
-        if code < 3280:  return "Indianapolis — Near Westside/Haughville"
-        if code < 3330:  return "Indianapolis — Fountain Square/Fletcher Place (Southeast)"
+        if code < 3200:  return "Indianapolis — Broad Ripple/Meridian-Kessler (North)"
+        if code < 3300:  return "Indianapolis — Near Southeast/Fountain Square"
+        if code < 3320:  return "Indianapolis — Near Westside/Haughville"
         if code < 3380:  return "Indianapolis — Irvington/Warren Park (East)"
         if code < 3420:  return "Indianapolis — Near Southside/Garfield Park"
         if code < 3480:  return "Indianapolis — Southport/Beech Grove (South)"
