@@ -21,6 +21,775 @@ RAPIDAPI_TEST_URL = os.environ.get(
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
 
+# Recent Starbucks openings in Central Indiana (2024-2025)
+# Used as a positive indicator for neighborhood growth and retail investment
+STARBUCKS_RECENT_OPENINGS = {
+    "Mooresville",
+    "Noblesville",
+    "Westfield",
+    "Zionsville",
+    "Greenfield",
+    "New Palestine",
+    "Brownsburg",
+    "Pendleton",
+    "Greenwood",
+    "Anderson",
+    # Indianapolis locations - mapping to specific neighborhoods
+    "Broad Ripple",  # 62nd & Keystone
+    "Beech Grove",  # Southport & Franklin Rd
+}
+
+# Google Maps neighborhood mapping (generated 2025-11-13)
+# Official neighborhood names from Google Maps Geocoding API
+GOOGLE_MAPS_NEIGHBORHOODS = {
+    "310104": "Park 100",
+    "310105": "Park 100",
+    "310106": "Westchester Estates",
+    "310108": "Eagle Creek",
+    "310110": "Eagle Creek",
+    "310111": "Eagle Creek",
+    "310112": "Traders Point",
+    "310113": "Eagle Creek",
+    "310201": "New Augusta",
+    "310203": "Fieldstone and Brookstone",
+    "310204": "Augusta / New Augusta",
+    "310305": "Northwest High School",
+    "310306": "International Marketplace",
+    "310308": "Guion Lakes",
+    "310309": "Snacks / Guion Creek",
+    "310310": "Liberty Creek North",
+    "310311": "Snacks / Guion Creek",
+    "310312": "Deer Creek",
+    "320105": "Misty Lake",
+    "320106": "St Vincent / Greenbriar",
+    "320107": "College Commons",
+    "320108": "St Vincent / Greenbriar",
+    "320109": "St Vincent / Greenbriar",
+    "320202": "North Central",
+    "320203": "Sherwood Forest",
+    "320205": "Keystone at the Crossing",
+    "320206": "Driftwood Hills",
+    "320301": "Clearwater",
+    "320303": "Castleton",
+    "320305": "Ivy Hills",
+    "320306": "Allisonville",
+    "320400": "Allisonville",
+    "320500": "Glendale",
+    "320600": "Ravenswood",
+    "320700": "Warfleigh",
+    "320800": "Meridian Hills/Williams Creek",
+    "320901": "Delaware Trails",
+    "320902": "Crooked Creek",
+    "320903": "Crooked Creek",
+    "321001": "Crooked Creek",
+    "321002": "Crooked Creek Civic League",
+    "321100": "Highland-Kessler",
+    "321200": "Warfleigh",
+    "321300": "Broad Ripple",
+    "321400": "Millersville",
+    "321600": "Devon",
+    "321700": "Canterbury-Chatard",
+    "321800": "Meridian-Kessler",
+    "321900": "Butler-Tarkington",
+    "322000": "Butler-Tarkington",
+    "322100": "Meridian-Kessler",
+    "322200": "Oliver Johnson's Woods",
+    "322300": "Meridian-Kessler",
+    "322400": "Fairgrounds",
+    "322500": "Fairgrounds",
+    "322601": "Meadows",
+    "322602": "Meadows",
+    "322700": "Forest Manor",
+    "330103": "Castleton",
+    "330105": "Castleton",
+    "330106": "I-69/Fall Creek",
+    "330107": "I-69/Fall Creek",
+    "330108": "Geist",
+    "330109": "I-69/Fall Creek",
+    "330203": "Geist",
+    "330204": "Lawrence-Fort Ben-Oaklandon",
+    "330206": "Lawrence Woods",
+    "330208": "Bay Ridge",
+    "330210": "Lawrence",
+    "330211": "Far Eastside",
+    "330212": "Lawrence",
+    "330213": "Oakland Hills at Geist",
+    "330401": "Devonshire",
+    "330500": "Devington",
+    "330600": "Lawrence",
+    "330701": "Lawrence",
+    "330702": "Lawrence",
+    "330803": "Far Eastside",
+    "330804": "Far Eastside",
+    "330805": "Lawrence",
+    "330806": "Far Eastside",
+    "330900": "Devington",
+    "331000": "Devington",
+    "340101": "Chapel Glen",
+    "340102": "Chapel Hill Village",
+    "340108": "Northwest High School",
+    "340111": "Key Meadows",
+    "340112": "Key Meadows",
+    "340113": "Chapel Hill / Ben Davis",
+    "340114": "Key Meadows",
+    "340115": "Aspen Ridge",
+    "340201": "Northwest High School",
+    "340202": "Speedway",
+    "340301": "Eagledale",
+    "340302": "Eagledale",
+    "340400": "Eagledale",
+    "340500": "Venerable Flackville",
+    "340600": "Marian - Cold Springs",
+    "340700": "Speedway",
+    "340800": "Speedway",
+    "340901": "Westridge",
+    "340903": "Speedway",
+    "340904": "Speedway",
+    "341000": "Speedway",
+    "341100": "Near Westside",
+    "341200": "West Side",
+    "341600": "Haughville",
+    "341701": "Near Westside",
+    "341702": "Garden City",
+    "341902": "Chapel Hill / Ben Davis",
+    "341903": "Garden City",
+    "341904": "Garden City",
+    "342000": "Chapel Hill / Ben Davis",
+    "342101": "Chapel Hill / Ben Davis",
+    "342200": "Park Fletcher",
+    "342300": "Mars Hill",
+    "342400": "West Indianapolis",
+    "342500": "Stout Field",
+    "342600": "West Indianapolis",
+    "350100": "Near NW - Riverside",
+    "350300": "Crown Hill",
+    "350400": "Mapleton - Fall Creek",
+    "350500": "Meadows",
+    "350600": "Forest Manor",
+    "350700": "Martindale - Brightwood",
+    "350800": "Martindale - Brightwood",
+    "350900": "Mapleton - Fall Creek",
+    "351000": "Crown Hill",
+    "351200": "Near NW - Riverside",
+    "351500": "Highland Vicinity",
+    "351600": "Fall Creek Place",
+    "351700": "Reagan Park",
+    "351900": "Martindale - Brightwood",
+    "352100": "Martindale - Brightwood",
+    "352300": "Martindale - Brightwood",
+    "352400": "Near Eastside",
+    "352500": "Little Flower",
+    "352600": "Near Eastside",
+    "352700": "Windsor Park",
+    "352800": "Hillside",
+    "353300": "Near Northside",
+    "353500": "Near NW - Riverside",
+    "353600": "Riverside",
+    "354201": "Lockerbie Square",
+    "354202": "Chatham-Arch",
+    "354400": "Holy Cross",
+    "354500": "Near Eastside",
+    "354700": "Near Eastside",
+    "354800": "Near Eastside",
+    "354900": "Near Eastside",
+    "355000": "Englewood",
+    "355100": "Tuxedo Park",
+    "355300": "Emerson Heights",
+    "355400": "Bosart Brown",
+    "355500": "Christian Park",
+    "355600": "Christian Park",
+    "355700": "Christian Park",
+    "355900": "Fountain Square",
+    "356200": "Fletcher Place",
+    "356400": "Near Westside",
+    "356900": "Old Southside",
+    "357000": "Bates-Hendricks",
+    "357100": "Fountain Square",
+    "357200": "Fountain Square",
+    "357300": "Near Southeast",
+    "357400": "Near Southeast",
+    "357500": "Beech Grove",
+    "357601": "Bean Creek",
+    "357602": "Near Southeast",
+    "357800": "Near Southside",
+    "357900": "Garfield Park-South Neighborhood",
+    "358000": "Garfield Park",
+    "358100": "West Indianapolis",
+    "360101": "Eastside",
+    "360102": "Arlington Woods",
+    "360201": "Arlington Woods",
+    "360202": "Far Eastside",
+    "360301": "Far Eastside",
+    "360302": "Arlington Woods",
+    "360401": "Far Eastside",
+    "360402": "Far Eastside",
+    "360405": "Far Eastside",
+    "360406": "Far Eastside",
+    "360407": "Far Eastside",
+    "360501": "East Warren",
+    "360502": "East Warren",
+    "360601": "East Warren",
+    "360602": "East Gate",
+    "360700": "Irvington",
+    "360800": "Warren",
+    "360900": "Community Heights",
+    "361000": "Irvington",
+    "361100": "Irvington Historic District",
+    "361200": "Irvington",
+    "361300": "East Gate",
+    "361401": "Raymond Park",
+    "361402": "Glenroy Village",
+    "361601": "Southeast Warren",
+    "361602": "Southeast Warren",
+    "370201": "Mars Hill",
+    "370203": "Mars Hill",
+    "370204": "Mars Hill",
+    "370303": "Camby",
+    "370304": "West Newton",
+    "370305": "Valley Mills",
+    "370306": "Valley Mills",
+    "380101": "Glenns Valley",
+    "380102": "Sunshine Gardens",
+    "380103": "Sunshine Gardens",
+    "380200": "North Perry",
+    "380301": "University Heights",
+    "380302": "Carson Heights",
+    "380402": "Beech Grove",
+    "380403": "Beech Grove",
+    "380404": "University Heights",
+    "380501": "Edgewood",
+    "380502": "University Heights and Rosedale Hills",
+    "380600": "Southdale",
+    "380700": "Southdale",
+    "380800": "Edgewood",
+    "380901": "Perry Manor",
+    "380902": "I-65 / South Emerson",
+    "381002": "Homecroft",
+    "381003": "Southport",
+    "381004": "South Perry",
+    "381101": "Richling Acres",
+    "381102": "Linden Wood",
+    "381203": "Winchester Village",
+    "381204": "South Perry",
+    "381205": "Richmond Hill",
+    "381206": "Hill Valley Estates",
+    "381207": "Hill Valley Estates",
+    "390102": "Beech Grove",
+    "390103": "Poplar Grove",
+    "390104": "Five Points",
+    "390200": "New Bethel",
+    "390300": "Acton",
+    "390405": "South Franklin",
+    "390406": "Galludet",
+    "390407": "South Franklin",
+    "390408": "Galludet",
+    "390409": "South Franklin",
+    "390410": "I-65 / South Emerson",
+    "390411": "I-65 / South Emerson",
+    "390500": "Crown Hill",
+    "390601": "Brendonwood",
+    "390602": "Lawrence-Fort Ben-Oaklandon",
+    "390700": "Hawthorne",
+    "390801": "Airport",
+    "390802": "Airport",
+    "390900": "Kennedy King",
+    "391001": "Downtown",
+    "391002": "Mile Square",
+}
+
+# Google Maps ZIP code mapping (generated 2025-11-13)
+# Maps census tracts to accurate ZIP codes for listings lookups
+TRACT_TO_ZIP_MAPPING = {
+    # Boone County (FIPS 011)
+    "011": {
+        "810100": "46052",
+        "810200": "46071",
+        "810300": "46052",
+        "810400": "46052",
+        "810500": "46052",
+        "810601": "46075",
+        "810604": "46077",
+        "810605": "46077",
+        "810606": "46077",
+        "810607": "46077",
+        "810700": "46052",
+    },
+    # Hamilton County (FIPS 057)
+    "057": {
+        "110101": "46060",
+        "110102": "46060",
+        "110201": "46030",
+        "110202": "46034",
+        "110301": "46074",
+        "110302": "46074",
+        "110303": "46069",
+        "110401": "46074",
+        "110404": "46032",
+        "110405": "46033",
+        "110406": "46074",
+        "110505": "46060",
+        "110509": "46062",
+        "110511": "46062",
+        "110512": "46062",
+        "110513": "46060",
+        "110514": "46060",
+        "110515": "46033",
+        "110516": "46074",
+        "110517": "46062",
+        "110518": "46062",
+        "110600": "46060",
+        "110700": "46060",
+        "110805": "46037",
+        "110807": "46037",
+        "110810": "46038",
+        "110811": "46038",
+        "110812": "46038",
+        "110813": "46040",
+        "110814": "46037",
+        "110815": "46037",
+        "110816": "46037",
+        "110817": "46038",
+        "110818": "46038",
+        "110819": "46038",
+        "110820": "46038",
+        "110821": "46037",
+        "110822": "46037",
+        "110904": "46033",
+        "110905": "46032",
+        "110906": "46032",
+        "110907": "46033",
+        "110909": "46032",
+        "110910": "46074",
+        "110911": "46033",
+        "110912": "46033",
+        "111003": "46033",
+        "111004": "46033",
+        "111006": "46032",
+        "111007": "46032",
+        "111009": "46032",
+        "111010": "46077",
+        "111011": "46032",
+        "111012": "46032",
+        "111101": "46033",
+        "111103": "46032",
+        "111104": "46280",
+    },
+    # Hancock County (FIPS 059)
+    "059": {
+        "410100": "46186",
+        "410201": "46055",
+        "410202": "46040",
+        "410301": "46140",
+        "410302": "46140",
+        "410401": "46140",
+        "410402": "46140",
+        "410500": "46140",
+        "410600": "46140",
+        "410700": "46140",
+        "410801": "46163",
+        "410802": "46163",
+        "410901": "46140",
+        "410902": "46140",
+        "411000": "46163",
+    },
+    # Hendricks County (FIPS 063)
+    "063": {
+        "210103": "46112",
+        "210105": "46112",
+        "210106": "46112",
+        "210107": "46112",
+        "210108": "46234",
+        "210109": "46112",
+        "210201": "46112",
+        "210203": "46112",
+        "210204": "46112",
+        "210300": "46167",
+        "210400": "46165",
+        "210501": "46122",
+        "210502": "46122",
+        "210607": "46168",
+        "210608": "46168",
+        "210609": "46123",
+        "210610": "46123",
+        "210611": "46123",
+        "210612": "46123",
+        "210613": "46123",
+        "210614": "46123",
+        "210615": "46168",
+        "210616": "46123",
+        "210617": "46234",
+        "210701": "46168",
+        "210702": "46168",
+        "210801": "46168",
+        "210802": "46168",
+        "210900": "46168",
+        "211000": "46118",
+        "211100": "46121",
+    },
+    # Johnson County (FIPS 081)
+    "081": {
+        "610101": "46143",
+        "610102": "46184",
+        "610201": "46143",
+        "610203": "46143",
+        "610204": "46143",
+        "610300": "46142",
+        "610401": "46142",
+        "610403": "46143",
+        "610404": "46142",
+        "610501": "46184",
+        "610502": "46184",
+        "610603": "46142",
+        "610605": "46142",
+        "610606": "46142",
+        "610607": "46143",
+        "610608": "46143",
+        "610703": "46143",
+        "610704": "46143",
+        "610705": "46106",
+        "610706": "46106",
+        "610801": "46106",
+        "610802": "46131",
+        "610900": "46131",
+        "611000": "46131",
+        "611100": "46131",
+        "611200": "46131",
+        "611300": "46124",
+        "611400": "46181",
+    },
+    # Madison County (FIPS 095)
+    "095": {
+        "000300": "46016",
+        "000400": "46016",
+        "000500": "46016",
+        "000800": "46016",
+        "000900": "46016",
+        "001000": "46016",
+        "001100": "46012",
+        "001200": "46012",
+        "001300": "46012",
+        "001400": "46012",
+        "001500": "46011",
+        "001600": "46011",
+        "001700": "46011",
+        "001801": "46013",
+        "001802": "46013",
+        "001901": "46013",
+        "001902": "46013",
+        "002000": "46013",
+        "010100": "46070",
+        "010200": "46036",
+        "010300": "46036",
+        "010400": "46036",
+        "010500": "46001",
+        "010600": "46001",
+        "010700": "46012",
+        "010800": "46011",
+        "010900": "46036",
+        "011000": "46011",
+        "011100": "46051",
+        "011200": "46017",
+        "011300": "46017",
+        "011400": "46013",
+        "011501": "46064",
+        "011502": "46064",
+        "011600": "46064",
+        "011700": "46064",
+        "011800": "46064",
+        "011900": "46016",
+        "012000": "46016",
+    },
+    # Marion County (FIPS 097)
+    "097": {
+        "310104": "46268",
+        "310105": "46268",
+        "310106": "46268",
+        "310108": "46234",
+        "310110": "46254",
+        "310111": "46254",
+        "310112": "46278",
+        "310113": "46278",
+        "310201": "46268",
+        "310203": "46268",
+        "310204": "46268",
+        "310305": "46254",
+        "310306": "46254",
+        "310308": "46254",
+        "310309": "46254",
+        "310310": "46254",
+        "310311": "46228",
+        "310312": "46254",
+        "320105": "46260",
+        "320106": "46260",
+        "320107": "46240",
+        "320108": "46260",
+        "320109": "46260",
+        "320202": "46240",
+        "320203": "46240",
+        "320205": "46240",
+        "320206": "46240",
+        "320301": "46240",
+        "320303": "46250",
+        "320305": "46250",
+        "320306": "46250",
+        "320400": "46220",
+        "320500": "46220",
+        "320600": "46220",
+        "320700": "46220",
+        "320800": "46240",
+        "320901": "46260",
+        "320902": "46260",
+        "320903": "46260",
+        "321001": "46228",
+        "321002": "46228",
+        "321100": "46228",
+        "321200": "46220",
+        "321300": "46220",
+        "321400": "46220",
+        "321600": "46220",
+        "321700": "46220",
+        "321800": "46220",
+        "321900": "46208",
+        "322000": "46208",
+        "322100": "46205",
+        "322200": "46205",
+        "322300": "46205",
+        "322400": "46205",
+        "322500": "46205",
+        "322601": "46205",
+        "322602": "46205",
+        "322700": "46226",
+        "330103": "46250",
+        "330105": "46250",
+        "330106": "46256",
+        "330107": "46256",
+        "330108": "46256",
+        "330109": "46256",
+        "330203": "46236",
+        "330204": "46236",
+        "330206": "46236",
+        "330208": "46236",
+        "330210": "46235",
+        "330211": "46235",
+        "330212": "46235",
+        "330213": "46236",
+        "330401": "46220",
+        "330500": "46226",
+        "330600": "46226",
+        "330701": "46226",
+        "330702": "46235",
+        "330803": "46235",
+        "330804": "46235",
+        "330805": "46226",
+        "330806": "46226",
+        "330900": "46226",
+        "331000": "46226",
+        "340101": "46234",
+        "340102": "46214",
+        "340108": "46224",
+        "340111": "46214",
+        "340112": "46214",
+        "340113": "46234",
+        "340114": "46234",
+        "340115": "46214",
+        "340201": "46224",
+        "340202": "46224",
+        "340301": "46224",
+        "340302": "46224",
+        "340400": "46222",
+        "340500": "46222",
+        "340600": "46222",
+        "340700": "46222",
+        "340800": "46224",
+        "340901": "46214",
+        "340903": "46224",
+        "340904": "46224",
+        "341000": "46224",
+        "341100": "46222",
+        "341200": "46222",
+        "341600": "46222",
+        "341701": "46222",
+        "341702": "46222",
+        "341902": "46214",
+        "341903": "46224",
+        "341904": "46224",
+        "342000": "46231",
+        "342101": "46241",
+        "342200": "46241",
+        "342300": "46241",
+        "342400": "46241",
+        "342500": "46241",
+        "342600": "46221",
+        "350100": "46208",
+        "350300": "46208",
+        "350400": "46205",
+        "350500": "46218",
+        "350600": "46218",
+        "350700": "46218",
+        "350800": "46218",
+        "350900": "46205",
+        "351000": "46208",
+        "351200": "46208",
+        "351500": "46208",
+        "351600": "46208",
+        "351700": "46205",
+        "351900": "46218",
+        "352100": "46218",
+        "352300": "46218",
+        "352400": "46218",
+        "352500": "46201",
+        "352600": "46201",
+        "352700": "46201",
+        "352800": "46218",
+        "353300": "46202",
+        "353500": "46202",
+        "353600": "46202",
+        "354201": "46202",
+        "354202": "46202",
+        "354400": "46202",
+        "354500": "46201",
+        "354700": "46201",
+        "354800": "46201",
+        "354900": "46201",
+        "355000": "46201",
+        "355100": "46201",
+        "355300": "46201",
+        "355400": "46201",
+        "355500": "46201",
+        "355600": "46201",
+        "355700": "46201",
+        "355900": "46203",
+        "356200": "46225",
+        "356400": "46222",
+        "356900": "46225",
+        "357000": "46203",
+        "357100": "46203",
+        "357200": "46203",
+        "357300": "46203",
+        "357400": "46203",
+        "357500": "46107",
+        "357601": "46203",
+        "357602": "46203",
+        "357800": "46203",
+        "357900": "46203",
+        "358000": "46225",
+        "358100": "46219",
+        "360101": "46218",
+        "360102": "46218",
+        "360201": "46226",
+        "360202": "46226",
+        "360301": "46219",
+        "360302": "46219",
+        "360401": "46229",
+        "360402": "46235",
+        "360405": "46229",
+        "360406": "46235",
+        "360407": "46235",
+        "360501": "46229",
+        "360502": "46229",
+        "360601": "46219",
+        "360602": "46219",
+        "360700": "46219",
+        "360800": "46219",
+        "360900": "46219",
+        "361000": "46219",
+        "361100": "46219",
+        "361200": "46219",
+        "361300": "46219",
+        "361401": "46239",
+        "361402": "46203",
+        "361601": "46239",
+        "361602": "46239",
+        "370201": "46221",
+        "370203": "46241",
+        "370204": "46221",
+        "370303": "46113",
+        "370304": "46221",
+        "370305": "46221",
+        "370306": "46221",
+        "380101": "46217",
+        "380102": "46217",
+        "380103": "46217",
+        "380200": "46217",
+        "380301": "46237",
+        "380302": "46227",
+        "380402": "46237",
+        "380403": "46107",
+        "380404": "46237",
+        "380501": "46227",
+        "380502": "46227",
+        "380600": "46227",
+        "380700": "46217",
+        "380800": "46227",
+        "380901": "46227",
+        "380902": "46237",
+        "381002": "46227",
+        "381003": "46227",
+        "381004": "46227",
+        "381101": "46217",
+        "381102": "46217",
+        "381203": "46227",
+        "381204": "46227",
+        "381205": "46237",
+        "381206": "46227",
+        "381207": "46217",
+        "390102": "46203",
+        "390103": "46237",
+        "390104": "46239",
+        "390200": "46239",
+        "390300": "46259",
+        "390405": "46237",
+        "390406": "46259",
+        "390407": "46259",
+        "390408": "46237",
+        "390409": "46237",
+        "390410": "46237",
+        "390411": "46237",
+        "390500": "46208",
+        "390601": "46226",
+        "390602": "46216",
+        "390700": "46222",
+        "390801": "46241",
+        "390802": "46241",
+        "390900": "46202",
+        "391001": "46204",
+        "391002": "46204",
+    },
+    # Morgan County (FIPS 109)
+    "109": {
+        "510101": "46113",
+        "510102": "46151",
+        "510201": "46158",
+        "510202": "46158",
+        "510300": "46158",
+        "510401": "46157",
+        "510402": "46157",
+        "510500": "46151",
+        "510601": "46151",
+        "510602": "46160",
+        "510701": "46151",
+        "510703": "46151",
+        "510704": "46151",
+        "510800": "46151",
+        "510900": "46151",
+        "511001": "46166",
+        "511002": "46166",
+    },
+    # Shelby County (FIPS 145)
+    "145": {
+        "710100": "46161",
+        "710200": "46126",
+        "710300": "46176",
+        "710400": "46176",
+        "710500": "46176",
+        "710601": "46176",
+        "710602": "46176",
+        "710700": "46176",
+        "710800": "46176",
+        "710900": "47234",
+    },
+}
+
 DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "150000"))
 DEFAULT_PRICE_MAX = int(os.environ.get("PRICE_MAX", "250000"))
 
@@ -75,38 +844,64 @@ def tract_id_human(tract_str: str) -> str:
     t = tract_str.zfill(6)
     return f"{t[:4]}.{t[4:]}"
 
+def has_recent_starbucks(neighborhood: str, county_name: str) -> bool:
+    """Check if neighborhood/city has a recent Starbucks opening (2024-2025)"""
+    # Check full neighborhood name
+    if neighborhood in STARBUCKS_RECENT_OPENINGS:
+        return True
+
+    # Check county-level cities (for suburbs)
+    city_mappings = {
+        "Hamilton": ["Noblesville", "Westfield"],
+        "Boone": ["Zionsville"],
+        "Hancock": ["Greenfield", "New Palestine"],
+        "Hendricks": ["Brownsburg"],
+        "Madison": ["Pendleton", "Anderson"],
+        "Johnson": ["Greenwood"],
+        "Morgan": ["Mooresville"],
+    }
+
+    cities = city_mappings.get(county_name, [])
+    for city in cities:
+        if city in neighborhood or city in STARBUCKS_RECENT_OPENINGS:
+            return True
+
+    return False
+
 def neighborhood_label(county_name: str, tract: str) -> str:
-    """Map census tracts to recognizable neighborhoods/cities"""
+    """Map census tracts to recognizable neighborhoods/cities using Google Maps data"""
     t = (tract or "").zfill(6)
 
-    # For Marion County, use 4-digit tract codes since they only span 31xx-39xx
+    # For Marion County (Indianapolis), use Google Maps official neighborhood names
     if county_name == "Marion":
+        # Check Google Maps data first (most accurate!)
+        google_neighborhood = GOOGLE_MAPS_NEIGHBORHOODS.get(t)
+        if google_neighborhood:
+            return google_neighborhood
+
+        # Fallback to manual mapping if Google Maps doesn't have this tract
         try:
             code = int(t[:4]) if len(t) >= 4 else 0
         except:
             code = 0
 
-        # Split Marion County (Indianapolis) into ~15 neighborhoods using 4-digit codes
-        if code < 3120:  return "Indianapolis — Near Eastside"
-        if code < 3140:  return "Indianapolis — Eastside"
-        if code < 3160:  return "Indianapolis — Far Eastside"
-        if code < 3180:  return "Indianapolis — Lawrence/Castleton"
-        if code < 3200:  return "Indianapolis — Northeast"
-        if code < 3220:  return "Indianapolis — Broad Ripple/Butler-Tarkington"
-        if code < 3240:  return "Indianapolis — Meridian-Kessler/SoBro"
-        if code < 3260:  return "Indianapolis — Downtown/Mass Ave"
-        if code < 3280:  return "Indianapolis — Near Westside/Haughville"
-        if code < 3300:  return "Indianapolis — Fountain Square/Fletcher Place"
-        if code < 3330:  return "Indianapolis — Irvington/Warren Park"
-        if code < 3360:  return "Indianapolis — Near Southside/Garfield Park"
-        if code < 3400:  return "Indianapolis — Southport/Beech Grove"
-        if code < 3450:  return "Indianapolis — Perry Township"
-        if code < 3500:  return "Indianapolis — Greenwood Area/Center Grove"
-        if code < 3550:  return "Indianapolis — Decatur/Southwest"
-        if code < 3650:  return "Indianapolis — Pike Township/Northwest"
-        if code < 3750:  return "Indianapolis — Washington Township/North"
-        if code < 3850:  return "Indianapolis — Lawrence Township/Northeast"
-        return "Indianapolis — Wayne Township/Southwest"
+        # Fallback ranges (shouldn't hit these often with Google Maps data)
+        if code < 3120:  return "Near Eastside"
+        if code < 3140:  return "Eastside"
+        if code < 3160:  return "Far Eastside"
+        if code < 3180:  return "Lawrence/Castleton"
+        if code < 3200:  return "Broad Ripple/Meridian-Kessler"
+        if code < 3300:  return "Near Southeast/Fountain Square"
+        if code < 3320:  return "Near Westside/Haughville"
+        if code < 3380:  return "Irvington/Warren Park"
+        if code < 3420:  return "Near Southside/Garfield Park"
+        if code < 3480:  return "Southport/Beech Grove"
+        if code < 3540:  return "Perry Township"
+        if code < 3600:  return "Decatur/Southwest"
+        if code < 3680:  return "Pike Township/Northwest"
+        if code < 3780:  return "Washington Township"
+        if code < 3880:  return "Lawrence Township"
+        return "Wayne Township/Southwest"
 
     # For other counties, use 2-digit codes as before
     head = int(t[:2]) if t[:2].isdigit() else 0
@@ -289,60 +1084,10 @@ def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
         return {"median_days_on_market": None}
 
 def get_zip_for_tract(county_fips: str, tract: str) -> Optional[str]:
-    """Map census tracts to ZIP codes for market data lookups"""
-    t2 = int((tract or "000000").zfill(6)[:2])
-
-    if county_fips == "097":  # Marion (Indianapolis)
-        if t2 <= 5: return "46239"      # Far Eastside
-        if t2 <= 12: return "46226"     # Lawrence/Castleton
-        if t2 <= 18: return "46220"     # Broad Ripple
-        if t2 <= 25: return "46202"     # Downtown
-        if t2 <= 32: return "46203"     # Fountain Square
-        if t2 <= 38: return "46219"     # Irvington
-        if t2 <= 45: return "46227"     # Southport
-        if t2 <= 52: return "46254"     # Pike
-        if t2 <= 65: return "46241"     # Decatur
-        if t2 <= 75: return "46237"     # Franklin Township
-        return "46217"                  # Perry Township
-
-    if county_fips == "057":  # Hamilton
-        if t2 <= 8: return "46060"      # Noblesville
-        if t2 <= 15: return "46074"     # Westfield
-        if t2 <= 25: return "46032"     # Carmel North
-        if t2 <= 35: return "46033"     # Carmel South
-        if t2 <= 50: return "46038"     # Fishers North
-        return "46037"                  # Fishers South/Geist
-
-    if county_fips == "063":  # Hendricks
-        if t2 <= 15: return "46123"     # Avon
-        if t2 <= 35: return "46168"     # Plainfield
-        return "46112"                  # Brownsburg
-
-    if county_fips == "081":  # Johnson
-        if t2 <= 20: return "46143"     # Greenwood
-        if t2 <= 40: return "46131"     # Franklin
-        return "46184"                  # Whiteland
-
-    if county_fips == "011":  # Boone
-        if t2 <= 20: return "46077"     # Zionsville
-        return "46052"                  # Lebanon
-
-    if county_fips == "095":  # Madison
-        if t2 <= 10: return "46011"     # Anderson West
-        if t2 <= 20: return "46016"     # Anderson Downtown
-        if t2 <= 35: return "46013"     # Anderson East
-        return "46017"                  # Anderson South
-
-    if county_fips == "145":  # Shelby
-        return "46176"                  # Shelbyville
-
-    if county_fips == "109":  # Morgan
-        return "46151"                  # Martinsville
-
-    if county_fips == "059":  # Hancock
-        return "46140"                  # Greenfield
-
-    return None
+    """Map census tracts to ZIP codes using Google Maps data"""
+    t = (tract or "").zfill(6)
+    county_map = TRACT_TO_ZIP_MAPPING.get(county_fips, {})
+    return county_map.get(t)
 
 # === SCORING ===
 
@@ -351,6 +1096,8 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     income = tract.get("median_income") or 0
     vacancy_pct = tract.get("vacancy_pct") or 0.0
     dom = tract.get("days_on_market")
+    neighborhood = tract.get("neighborhood", "")
+    county_name = tract.get("county_name", "")
 
     # Gap score
     gap_ratio = (mhv / price_max) if price_max > 0 else 0
@@ -383,10 +1130,20 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     else:
         velocity_score = 0.5
 
+    # Base score calculation
     total = 0.50*gap_score + 0.20*vacancy_score + 0.20*income_score + 0.10*velocity_score
-    total_score = round(total * 100, 1)
+
+    # Starbucks bonus: +3 points for recent commercial investment
+    starbucks_bonus = 0.0
+    has_starbucks = has_recent_starbucks(neighborhood, county_name)
+    if has_starbucks:
+        starbucks_bonus = 3.0
+
+    total_score = round((total * 100) + starbucks_bonus, 1)
 
     insights, warnings = [], []
+    if has_starbucks:
+        insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
     if 1.3 <= gap_ratio <= 1.4: insights.append("💰 Strong profit potential in this price range")
     elif gap_ratio < 1.1: warnings.append("⚠️ Limited profit margin")
     elif gap_ratio > 1.7: warnings.append("⚠️ Median value significantly above budget")
@@ -405,6 +1162,8 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
         "vacancy_score": round(vacancy_score * 100, 1),
         "income_score": round(income_score * 100, 1),
         "velocity_score": round(velocity_score * 100, 1),
+        "starbucks_bonus": starbucks_bonus,
+        "has_starbucks": has_starbucks,
         "insights": insights,
         "warnings": warnings,
     }
@@ -434,9 +1193,16 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     gap_ratio    = pop_weighted_avg([(r.get("gap_ratio"), r.get("total_pop") or 0) for r in rows])
     area_score   = pop_weighted_avg([(r.get("score"), r.get("total_pop") or 0) for r in rows])
 
+    # Check if any tract in the group has Starbucks (should be consistent across group)
+    has_starbucks = any(r.get("has_starbucks", False) for r in rows)
+
     # 👉 Derive messages from the aggregated metrics (not by unioning tract messages)
     insights: List[str] = []
     warnings: List[str] = []
+
+    # Starbucks indicator comes first for visibility
+    if has_starbucks:
+        insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
 
     if gap_ratio is not None:
         if 1.3 <= gap_ratio <= 1.4:
@@ -486,6 +1252,7 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "gap_ratio": round(gap_ratio, 2) if gap_ratio is not None else None,
         "total_pop": total_pop,
         "score": round(area_score, 1) if area_score is not None else 0.0,
+        "has_starbucks": has_starbucks,
         "insights": insights,
         "warnings": warnings,
         "member_tracts": members,
@@ -710,9 +1477,14 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
                         vac_pct = neighborhood.get("vacancy_pct")
                         med_home_val = neighborhood.get("median_home_value")
                         med_income = neighborhood.get("median_income")
+                        has_starbucks = neighborhood.get("has_starbucks", False)
 
                         insights = []
                         warnings = []
+
+                        # Preserve Starbucks indicator (comes first for visibility)
+                        if has_starbucks:
+                            insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
 
                         if gap_ratio is not None:
                             if 1.3 <= gap_ratio <= 1.4:
