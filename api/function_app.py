@@ -35,8 +35,8 @@ STARBUCKS_RECENT_OPENINGS = {
     "Greenwood",
     "Anderson",
     # Indianapolis locations - mapping to specific neighborhoods
-    "Indianapolis — Broad Ripple (North)",  # 62nd & Keystone
-    "Indianapolis — Beech Grove (South)",  # Southport & Franklin Rd
+    "Indianapolis — Broad Ripple/Butler-Tarkington (North)",  # 62nd & Keystone
+    "Indianapolis — Southport/Beech Grove (South)",  # Southport & Franklin Rd
 }
 
 DEFAULT_PRICE_MIN = int(os.environ.get("PRICE_MIN", "150000"))
@@ -128,25 +128,26 @@ def neighborhood_label(county_name: str, tract: str) -> str:
         except:
             code = 0
 
-        # Split Marion County (Indianapolis) using 4-digit codes with proper cardinal directions
-        # Aligned with ZIP code geography: 46203 is Southeast, Broad Ripple is North, etc.
-        if code < 3120:  return "Indianapolis — East Side"
-        if code < 3160:  return "Indianapolis — Far East Side"
-        if code < 3180:  return "Indianapolis — Lawrence (Northeast)"
-        if code < 3200:  return "Indianapolis — Broad Ripple (North)"
-        if code < 3240:  return "Indianapolis — Meridian-Kessler (North Central)"
-        if code < 3260:  return "Indianapolis — Downtown"
-        if code < 3280:  return "Indianapolis — Near West Side"
-        if code < 3330:  return "Indianapolis — Fountain Square (Southeast)"
-        if code < 3380:  return "Indianapolis — Irvington (East)"
-        if code < 3420:  return "Indianapolis — Near South Side"
-        if code < 3480:  return "Indianapolis — Beech Grove (South)"
+        # Split Marion County (Indianapolis) with neighborhood names and accurate cardinal directions
+        # Fixed: 46203 is Southeast (Fountain Square area), not Northeast
+        if code < 3120:  return "Indianapolis — Near Eastside"
+        if code < 3140:  return "Indianapolis — Eastside"
+        if code < 3160:  return "Indianapolis — Far Eastside"
+        if code < 3180:  return "Indianapolis — Lawrence/Castleton (Northeast)"
+        if code < 3200:  return "Indianapolis — Broad Ripple/Butler-Tarkington (North)"
+        if code < 3240:  return "Indianapolis — Meridian-Kessler/SoBro (North Central)"
+        if code < 3260:  return "Indianapolis — Downtown/Mass Ave"
+        if code < 3280:  return "Indianapolis — Near Westside/Haughville"
+        if code < 3330:  return "Indianapolis — Fountain Square/Fletcher Place (Southeast)"
+        if code < 3380:  return "Indianapolis — Irvington/Warren Park (East)"
+        if code < 3420:  return "Indianapolis — Near Southside/Garfield Park"
+        if code < 3480:  return "Indianapolis — Southport/Beech Grove (South)"
         if code < 3540:  return "Indianapolis — Perry Township (South)"
-        if code < 3600:  return "Indianapolis — Decatur (Southwest)"
-        if code < 3680:  return "Indianapolis — Pike Township (Northwest)"
+        if code < 3600:  return "Indianapolis — Decatur/Southwest"
+        if code < 3680:  return "Indianapolis — Pike Township/Northwest"
         if code < 3780:  return "Indianapolis — Washington Township (North)"
         if code < 3880:  return "Indianapolis — Lawrence Township (Northeast)"
-        return "Indianapolis — Wayne Township (Southwest)"
+        return "Indianapolis — Wayne Township/Southwest"
 
     # For other counties, use 2-digit codes as before
     head = int(t[:2]) if t[:2].isdigit() else 0
