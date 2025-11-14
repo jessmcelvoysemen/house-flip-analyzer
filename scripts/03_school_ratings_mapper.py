@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
 One-time script to fetch school ratings for Indianapolis neighborhoods.
-Cost: FREE (GreatSchools API is free for non-commercial use)
+Cost: FREE (2,000 calls/month with SchoolDigger via RapidAPI)
 
 School ratings are HUGE for resale value - especially for families.
 
-API: https://www.greatschools.org/api/
-Sign up: https://www.greatschools.org/api-request/
+API: SchoolDigger via RapidAPI
+Sign up: https://rapidapi.com/schooldigger-schooldigger-default/api/schooldigger-k-12-school-data-api
 
 Usage:
-1. Request free API key from GreatSchools
-2. Set GREATSCHOOLS_API_KEY environment variable
+1. Get RapidAPI key (you already have one from Realtor.com!)
+2. Set RAPIDAPI_KEY environment variable
 3. Run: python3 scripts/03_school_ratings_mapper.py
 4. Copy output into function_app.py as scoring bonus
 """
@@ -18,61 +18,111 @@ Usage:
 import os
 import requests
 import time
+import statistics
 
-GREATSCHOOLS_API_KEY = os.environ.get("GREATSCHOOLS_API_KEY", "YOUR_KEY_HERE")
+# Use the same RapidAPI key as your Realtor.com API
+RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "YOUR_KEY_HERE")
+RAPIDAPI_HOST = "schooldigger-k-12-school-data-api.p.rapidapi.com"
 
-# ZIP codes for each major Indianapolis neighborhood
+# ZIP codes for key Indianapolis neighborhoods and suburbs
+# Using representative ZIPs for each area to get school data
 NEIGHBORHOOD_ZIPS = {
-    "Broad Ripple": "46220",
-    "Fountain Square": "46203",
+    # Indianapolis Core
     "Downtown": "46204",
-    "Irvington": "46219",
     "Mass Ave": "46204",
-    "Fletcher Place": "46203",
+    "Fountain Square": "46203",
+    "Fletcher Place": "46225",
+    "Bates-Hendricks": "46203",
+
+    # North Indianapolis
+    "Broad Ripple": "46220",
     "Meridian-Kessler": "46208",
     "Butler-Tarkington": "46208",
+    "Crown Hill": "46208",
+
+    # East Indianapolis
+    "Irvington": "46219",
     "Near Eastside": "46201",
+    "Fall Creek Place": "46205",
+
+    # Lawrence/Castleton
     "Lawrence": "46226",
+    "Castleton": "46250",
+    "Geist": "46236",
+
+    # West/Southwest Indianapolis
+    "Speedway": "46224",
+    "Near Westside": "46222",
+    "West Indianapolis": "46221",
+    "Beech Grove": "46107",
+
+    # Wealthy Suburbs (Hamilton County)
     "Carmel": "46032",
     "Fishers": "46037",
-    "Zionsville": "46077",
-    "Greenwood": "46143",
     "Westfield": "46074",
+    "Noblesville": "46060",
+
+    # Other Suburbs
+    "Zionsville": "46077",  # Boone County
+    "Greenwood": "46143",   # Johnson County
+    "Plainfield": "46168",  # Hendricks County
+    "Avon": "46123",        # Hendricks County
 }
 
 def get_schools_in_zip(zip_code):
-    """Fetch all schools in a ZIP code"""
-    url = f"https://api.greatschools.org/schools"
+    """Fetch all schools in a ZIP code via SchoolDigger API"""
+    # SchoolDigger API endpoint (via RapidAPI)
+    # Note: The endpoint searches by city/state, so we'll search nearby and filter by ZIP
+    url = "https://schooldigger-k-12-school-data-api.p.rapidapi.com/v1.1/schools"
+
+    headers = {
+        "X-RapidAPI-Key": RAPIDAPI_KEY,
+        "X-RapidAPI-Host": RAPIDAPI_HOST
+    }
+
     params = {
-        "state": "IN",
+        "st": "IN",  # State code
         "zip": zip_code,
-        "key": GREATSCHOOLS_API_KEY,
-        "limit": 20
+        "perPage": 50  # Get more schools to ensure we cover the area
     }
 
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+
         if r.status_code == 200:
-            # Parse XML response (GreatSchools API returns XML)
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(r.content)
-
+            data = r.json()
             schools = []
-            for school in root.findall(".//school"):
-                rating = school.find("gsRating")
-                school_type = school.find("type")
-                name = school.find("name")
 
-                if rating is not None and rating.text:
+            # SchoolDigger returns a list of school objects
+            school_list = data.get("schoolList", [])
+
+            for school in school_list:
+                # SchoolDigger uses "rankingstatewide" as the rating metric
+                # It's a percentile rank (1-100), we'll convert to 1-10 scale
+                rank = school.get("rankingstatewide")
+                name = school.get("schoolName", "Unknown")
+                level = school.get("schoolLevel", "Unknown")
+
+                if rank is not None:
+                    # Convert percentile rank to 1-10 rating
+                    # Top 10% = 10, 10-20% = 9, etc.
+                    rating = max(1, min(10, 11 - (rank // 10)))
+
                     schools.append({
-                        "name": name.text if name is not None else "Unknown",
-                        "rating": int(rating.text),
-                        "type": school_type.text if school_type is not None else "Unknown"
+                        "name": name,
+                        "rating": rating,
+                        "type": level,
+                        "rank_percentile": rank
                     })
 
             return schools
-        else:
+        elif r.status_code == 429:
+            print(f"    Rate limit hit!")
             return None
+        else:
+            print(f"    API error: {r.status_code}")
+            return None
+
     except Exception as e:
         print(f"    Error: {e}")
         return None
@@ -82,14 +132,14 @@ def main():
     print("SCHOOL RATINGS MAPPER - One-Time Data Collection")
     print("="*70)
 
-    if GREATSCHOOLS_API_KEY == "YOUR_KEY_HERE":
-        print("\n❌ ERROR: Set GREATSCHOOLS_API_KEY first!")
-        print("   Request free API key: https://www.greatschools.org/api-request/")
-        print("   export GREATSCHOOLS_API_KEY='your-key-here'")
+    if RAPIDAPI_KEY == "YOUR_KEY_HERE":
+        print("\n❌ ERROR: Set RAPIDAPI_KEY first!")
+        print("   Use the same RapidAPI key from your Realtor.com setup")
+        print("   export RAPIDAPI_KEY='your-rapidapi-key-here'")
         return
 
     print(f"\nFetching school ratings for {len(NEIGHBORHOOD_ZIPS)} neighborhoods...")
-    print("(FREE API - may take a minute)\n")
+    print("(SchoolDigger via RapidAPI - 2,000 free calls/month)\n")
 
     ratings = {}
 
@@ -130,8 +180,10 @@ def main():
     print()
 
     avg = sum(r["avg_rating"] for r in ratings.values()) / len(ratings) if ratings else 0
+    total_calls = sum(r["num_schools"] for r in ratings.values())
     print(f"\n✅ Done! Average school rating: {avg:.1f}/10")
-    print("💰 Cost: $0 (FREE!)")
+    print(f"📊 API calls used: {total_calls} / 2,000 free monthly limit")
+    print("💰 Cost: $0 (FREE - well under monthly limit!)")
 
 if __name__ == "__main__":
     main()
