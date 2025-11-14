@@ -24,15 +24,25 @@ import statistics
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "YOUR_KEY_HERE")
 RAPIDAPI_HOST = "schooldigger-k-12-school-data-api.p.rapidapi.com"
 
-# ZIP codes for key Indianapolis neighborhoods and suburbs
-# Using representative ZIPs for each area to get school data
+# ZIP codes for Indianapolis metro area neighborhoods and suburbs
+# Covers all 9 counties in your census data: Marion, Hamilton, Hendricks,
+# Johnson, Boone, Hancock, Madison, Morgan, Shelby
 NEIGHBORHOOD_ZIPS = {
-    # Indianapolis Core
+    # ===== MARION COUNTY (Indianapolis) =====
+
+    # Downtown/Central
     "Downtown": "46204",
     "Mass Ave": "46204",
+    "Lockerbie Square": "46202",
+
+    # Near Eastside/Southeast
     "Fountain Square": "46203",
     "Fletcher Place": "46225",
     "Bates-Hendricks": "46203",
+    "Irvington": "46219",
+    "Near Eastside": "46201",
+    "Fall Creek Place": "46205",
+    "Near Southeast": "46203",
 
     # North Indianapolis
     "Broad Ripple": "46220",
@@ -40,33 +50,69 @@ NEIGHBORHOOD_ZIPS = {
     "Butler-Tarkington": "46208",
     "Crown Hill": "46208",
 
-    # East Indianapolis
-    "Irvington": "46219",
-    "Near Eastside": "46201",
-    "Fall Creek Place": "46205",
-
-    # Lawrence/Castleton
+    # Northeast/Lawrence/Castleton
     "Lawrence": "46226",
     "Castleton": "46250",
     "Geist": "46236",
+    "Fort Ben Harrison": "46216",
 
     # West/Southwest Indianapolis
     "Speedway": "46224",
     "Near Westside": "46222",
     "West Indianapolis": "46221",
-    "Beech Grove": "46107",
+    "Pike Township": "46254",
 
-    # Wealthy Suburbs (Hamilton County)
+    # South Indianapolis
+    "Beech Grove": "46107",
+    "Garfield Park": "46225",
+    "Southport": "46227",
+    "Perry Township": "46217",
+
+    # ===== HAMILTON COUNTY (Wealthy Northern Suburbs) =====
     "Carmel": "46032",
+    "Carmel - North": "46033",
     "Fishers": "46037",
+    "Fishers - North": "46038",
     "Westfield": "46074",
     "Noblesville": "46060",
+    "Cicero": "46034",
 
-    # Other Suburbs
-    "Zionsville": "46077",  # Boone County
-    "Greenwood": "46143",   # Johnson County
-    "Plainfield": "46168",  # Hendricks County
-    "Avon": "46123",        # Hendricks County
+    # ===== BOONE COUNTY (Northwest Suburbs) =====
+    "Zionsville": "46077",
+    "Lebanon": "46052",
+    "Whitestown": "46075",
+
+    # ===== HENDRICKS COUNTY (West Suburbs) =====
+    "Plainfield": "46168",
+    "Avon": "46123",
+    "Brownsburg": "46112",
+    "Danville": "46122",
+
+    # ===== JOHNSON COUNTY (South Suburbs) =====
+    "Greenwood": "46143",
+    "Franklin": "46131",
+    "Whiteland": "46184",
+    "New Whiteland": "46184",
+    "Bargersville": "46106",
+
+    # ===== HANCOCK COUNTY (East Suburbs) =====
+    "Greenfield": "46140",
+    "New Palestine": "46163",
+    "McCordsville": "46055",
+
+    # ===== MADISON COUNTY (Northeast - Anderson Area) =====
+    "Anderson": "46016",
+    "Anderson - East": "46012",
+    "Anderson - South": "46013",
+    "Pendleton": "46064",
+    "Chesterfield": "46017",
+
+    # ===== MORGAN COUNTY (Southwest) =====
+    "Martinsville": "46151",
+    "Mooresville": "46158",
+
+    # ===== SHELBY COUNTY (Southeast) =====
+    "Shelbyville": "46176",
 }
 
 def get_schools_in_zip(zip_code):
