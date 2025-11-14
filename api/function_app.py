@@ -1376,7 +1376,8 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
         elif school_rating <= 5.0:
             school_bonus = -2.0  # Below average - harder to sell to families
 
-    total_score = round((total * 100) + starbucks_bonus + school_bonus, 1)
+    # Cap final score at 100 for consistency
+    total_score = min(100.0, round((total * 100) + starbucks_bonus + school_bonus, 1))
 
     insights, warnings = [], []
 
