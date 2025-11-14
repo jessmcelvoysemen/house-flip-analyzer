@@ -117,17 +117,16 @@ NEIGHBORHOOD_ZIPS = {
 
 def get_schools_in_zip(zip_code):
     """Fetch all schools in a ZIP code via SchoolDigger API"""
-    # SchoolDigger API endpoint (via RapidAPI)
-    # Note: The endpoint searches by city/state, so we'll search nearby and filter by ZIP
-    url = "https://schooldigger-k-12-school-data-api.p.rapidapi.com/v1.1/schools"
+    # SchoolDigger API endpoint v2.0 (via RapidAPI)
+    url = "https://schooldigger-k-12-school-data-api.p.rapidapi.com/v2.0/schools"
 
     headers = {
-        "X-RapidAPI-Key": RAPIDAPI_KEY,
-        "X-RapidAPI-Host": RAPIDAPI_HOST
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": RAPIDAPI_HOST
     }
 
     params = {
-        "st": "IN",  # State code
+        "st": "IN",  # State code (required)
         "zip": zip_code,
         "perPage": 50  # Get more schools to ensure we cover the area
     }
@@ -139,15 +138,16 @@ def get_schools_in_zip(zip_code):
             data = r.json()
             schools = []
 
-            # SchoolDigger returns a list of school objects
-            school_list = data.get("schoolList", [])
+            # SchoolDigger v2.0 returns a list of school objects
+            # Try different possible keys for the school list
+            school_list = data.get("schoolList", data.get("schools", []))
 
             for school in school_list:
-                # SchoolDigger uses "rankingstatewide" as the rating metric
+                # SchoolDigger uses "rankingstatewide" or "rankingStatewide" as the rating metric
                 # It's a percentile rank (1-100), we'll convert to 1-10 scale
-                rank = school.get("rankingstatewide")
-                name = school.get("schoolName", "Unknown")
-                level = school.get("schoolLevel", "Unknown")
+                rank = school.get("rankingstatewide") or school.get("rankingStatewide")
+                name = school.get("schoolName", school.get("name", "Unknown"))
+                level = school.get("schoolLevel", school.get("level", "Unknown"))
 
                 if rank is not None:
                     # Convert percentile rank to 1-10 rating
@@ -166,7 +166,7 @@ def get_schools_in_zip(zip_code):
             print(f"    Rate limit hit!")
             return None
         else:
-            print(f"    API error: {r.status_code}")
+            print(f"    API error: {r.status_code} - {r.text[:200]}")
             return None
 
     except Exception as e:
