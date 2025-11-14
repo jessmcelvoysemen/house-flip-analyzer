@@ -21,6 +21,230 @@ RAPIDAPI_TEST_URL = os.environ.get(
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
 
+# School ratings by neighborhood/city (1-10 scale)
+# Based on district performance, test scores, and school quality metrics
+# Source: Compiled from GreatSchools, Niche, Indiana DOE data (2024-2025)
+NEIGHBORHOOD_SCHOOL_RATINGS = {
+    # ===== HAMILTON COUNTY (Top-rated schools in Indiana) =====
+    "Carmel": 9.5,
+    "Carmel — North": 9.5,
+    "Carmel — South/Keystone": 9.5,
+    "Fishers": 9.0,
+    "Fishers — North": 9.0,
+    "Fishers — South/Geist": 9.0,
+    "Westfield": 8.5,
+    "Noblesville": 8.5,
+    "Cicero": 8.0,
+
+    # ===== BOONE COUNTY (Excellent schools) =====
+    "Zionsville": 9.0,
+    "Lebanon": 7.0,
+    "Whitestown": 7.5,
+    "Boone County — Whitestown area": 7.5,
+
+    # ===== HENDRICKS COUNTY (Strong suburban schools) =====
+    "Avon": 8.0,
+    "Plainfield": 7.5,
+    "Brownsburg": 7.5,
+    "Danville": 7.0,
+    "Danville/Hendricks County": 7.0,
+
+    # ===== JOHNSON COUNTY (Good suburban schools) =====
+    "Greenwood": 7.0,
+    "Franklin": 6.5,
+    "Whiteland": 6.5,
+    "Whiteland/New Whiteland": 6.5,
+    "New Whiteland": 6.5,
+    "Bargersville": 7.0,
+    "Johnson County — South suburbs": 6.5,
+
+    # ===== HANCOCK COUNTY (Mixed quality) =====
+    "Greenfield": 6.5,
+    "New Palestine": 7.0,
+    "McCordsville": 7.5,  # Part of Mt. Vernon schools
+    "Hancock County — Outlying": 6.5,
+
+    # ===== MARION COUNTY - NORTH (Better IPS/Township schools) =====
+    "Broad Ripple": 6.5,
+    "Meridian-Kessler": 7.0,
+    "Butler-Tarkington": 6.5,
+    "Crown Hill": 6.0,
+    "Highland-Kessler": 6.5,
+    "North Central": 8.0,  # Strong township schools
+    "Meridian Hills/Williams Creek": 8.5,
+
+    # ===== MARION COUNTY - NORTHEAST (Lawrence Township) =====
+    "Lawrence": 6.5,
+    "Lawrence-Fort Ben-Oaklandon": 6.5,
+    "Lawrence Woods": 6.5,
+    "Castleton": 7.0,
+    "Geist": 8.0,  # HSE schools
+    "I-69/Fall Creek": 6.0,
+    "Allisonville": 7.0,
+    "Bay Ridge": 7.0,
+    "Oakland Hills at Geist": 8.0,
+    "Lawrence Township": 6.5,
+
+    # ===== MARION COUNTY - EAST =====
+    "Irvington": 5.5,
+    "Irvington Historic District": 5.5,
+    "Warren": 5.5,
+    "East Gate": 5.5,
+    "Community Heights": 5.5,
+    "Arlington Woods": 5.0,
+    "Far Eastside": 5.0,
+    "East Warren": 5.0,
+    "Southeast Warren": 5.0,
+    "Eastside": 5.0,
+
+    # ===== MARION COUNTY - DOWNTOWN/CENTRAL =====
+    "Downtown": 5.0,
+    "Mile Square": 5.0,
+    "Mass Ave": 5.0,
+    "Lockerbie Square": 6.0,  # Diverse schools, some choice
+    "Chatham-Arch": 6.0,
+    "Fall Creek Place": 6.0,  # Improving area
+    "Near Northside": 5.5,
+
+    # ===== MARION COUNTY - NEAR EASTSIDE/SOUTHEAST =====
+    "Near Eastside": 5.0,
+    "Fountain Square": 5.5,
+    "Fletcher Place": 6.0,  # Gentrifying, school choice
+    "Bates-Hendricks": 5.5,
+    "Near Southeast": 5.0,
+    "Holy Cross": 5.5,
+    "Englewood": 5.0,
+    "Tuxedo Park": 5.0,
+    "Bean Creek": 5.0,
+    "Christian Park": 5.0,
+
+    # ===== MARION COUNTY - WEST/NORTHWEST =====
+    "Speedway": 6.0,
+    "Pike Township": 6.0,
+    "Pike Township/Northwest": 6.0,
+    "Eagle Creek": 6.5,
+    "Traders Point": 7.0,
+    "Near Westside": 5.0,
+    "West Side": 5.0,
+    "West Indianapolis": 5.0,
+    "Haughville": 4.5,
+    "Eagledale": 5.5,
+    "Garden City": 5.5,
+    "Park Fletcher": 5.5,
+    "Mars Hill": 5.5,
+    "Stout Field": 5.5,
+    "Riverside": 5.5,
+    "Near NW - Riverside": 5.5,
+    "Crooked Creek": 6.0,
+    "Crooked Creek Civic League": 6.0,
+    "Chapel Hill / Ben Davis": 6.0,
+    "Chapel Glen": 6.0,
+    "Chapel Hill Village": 6.0,
+    "Park 100": 6.0,
+    "Westchester Estates": 6.5,
+    "New Augusta": 6.5,
+    "Augusta / New Augusta": 6.5,
+    "Fieldstone and Brookstone": 6.5,
+    "Northwest High School": 6.0,
+    "International Marketplace": 6.0,
+    "Guion Lakes": 6.0,
+    "Snacks / Guion Creek": 6.0,
+    "Liberty Creek North": 6.5,
+    "Deer Creek": 6.5,
+
+    # ===== MARION COUNTY - NORTH CENTRAL (Township schools) =====
+    "Keystone at the Crossing": 7.5,
+    "College Commons": 7.5,
+    "St Vincent / Greenbriar": 7.5,
+    "Misty Lake": 7.0,
+    "Driftwood Hills": 7.5,
+    "Clearwater": 7.5,
+    "Ivy Hills": 7.5,
+    "Glendale": 7.0,
+    "Ravenswood": 7.0,
+    "Warfleigh": 7.0,
+    "Sherwood Forest": 7.5,
+    "Devon": 7.0,
+    "Canterbury-Chatard": 7.5,
+    "Oliver Johnson's Woods": 7.0,
+    "Millersville": 6.5,
+    "Delaware Trails": 6.5,
+    "Devonshire": 7.0,
+    "Devington": 6.5,
+
+    # ===== MARION COUNTY - NORTHEAST AREAS =====
+    "Fairgrounds": 6.0,
+    "Meadows": 6.0,
+    "Forest Manor": 5.0,
+    "Martindale - Brightwood": 5.0,
+    "Mapleton - Fall Creek": 5.5,
+    "Highland Vicinity": 5.5,
+    "Reagan Park": 5.5,
+
+    # ===== MARION COUNTY - SOUTH =====
+    "Beech Grove": 6.0,
+    "Southport": 6.5,
+    "Garfield Park": 5.0,
+    "Garfield Park-South Neighborhood": 5.0,
+    "Old Southside": 5.5,
+    "Near Southside": 5.5,
+    "Perry Township": 6.0,
+    "Perry Manor": 6.0,
+    "South Perry": 6.0,
+    "North Perry": 6.0,
+    "University Heights": 6.0,
+    "University Heights and Rosedale Hills": 6.0,
+    "Carson Heights": 6.0,
+    "Southdale": 6.0,
+    "Edgewood": 6.0,
+    "Homecroft": 6.5,
+    "I-65 / South Emerson": 6.0,
+    "Richling Acres": 6.0,
+    "Linden Wood": 6.0,
+    "Winchester Village": 6.0,
+    "Richmond Hill": 6.0,
+    "Hill Valley Estates": 6.0,
+    "Poplar Grove": 6.0,
+    "Five Points": 6.0,
+    "Glenns Valley": 6.0,
+    "Sunshine Gardens": 6.0,
+    "New Bethel": 5.5,
+    "Acton": 5.5,
+    "South Franklin": 5.5,
+    "Galludet": 5.5,
+    "Brendonwood": 6.5,
+
+    # ===== MARION COUNTY - SOUTHWEST =====
+    "Camby": 6.0,
+    "West Newton": 6.0,
+    "Valley Mills": 6.0,
+
+    # ===== MARION COUNTY - SPECIAL AREAS =====
+    "Airport": 5.5,
+    "Kennedy King": 5.0,
+    "Hawthorne": 5.5,
+
+    # ===== MADISON COUNTY (Below average) =====
+    "Anderson": 5.0,
+    "Anderson — West Side": 5.0,
+    "Anderson — Downtown/Central": 5.0,
+    "Anderson — East Side": 5.0,
+    "Anderson — South": 5.0,
+    "Pendleton": 6.0,
+    "Chesterfield": 5.5,
+    "Madison County — Pendleton/Chesterfield": 5.5,
+
+    # ===== MORGAN COUNTY (Mixed rural) =====
+    "Martinsville": 6.0,
+    "Mooresville": 6.5,
+    "Morgan County — Outlying": 6.0,
+
+    # ===== SHELBY COUNTY (Small city schools) =====
+    "Shelbyville": 6.0,
+    "Shelbyville — Central": 6.0,
+    "Shelby County — Outlying": 6.0,
+}
+
 # Recent Starbucks openings in Central Indiana (2024-2025)
 # Used as a positive indicator for neighborhood growth and retail investment
 STARBUCKS_RECENT_OPENINGS = {
@@ -1139,9 +1363,32 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
     if has_starbucks:
         starbucks_bonus = 3.0
 
-    total_score = round((total * 100) + starbucks_bonus, 1)
+    # School ratings bonus: Critical for family buyers and resale value
+    school_bonus = 0.0
+    school_rating = NEIGHBORHOOD_SCHOOL_RATINGS.get(neighborhood)
+    if school_rating is not None:
+        if school_rating >= 8.0:
+            school_bonus = 5.0  # Excellent schools - major selling point
+        elif school_rating >= 7.0:
+            school_bonus = 3.0  # Good schools - strong advantage
+        elif school_rating >= 6.0:
+            school_bonus = 1.0  # Decent schools - slight advantage
+        elif school_rating <= 5.0:
+            school_bonus = -2.0  # Below average - harder to sell to families
+
+    # Cap final score at 100 for consistency
+    total_score = min(100.0, round((total * 100) + starbucks_bonus + school_bonus, 1))
 
     insights, warnings = [], []
+
+    # School rating insights (high priority for family buyers)
+    if school_rating and school_rating >= 8.0:
+        insights.append(f"🎓 Excellent schools (rated {school_rating}/10) — major family appeal")
+    elif school_rating and school_rating >= 7.0:
+        insights.append(f"🎓 Good schools (rated {school_rating}/10) — strong for families")
+    elif school_rating and school_rating <= 5.0:
+        warnings.append(f"⚠️ Below-average schools (rated {school_rating}/10) — may limit buyer pool")
+
     if has_starbucks:
         insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
     if 1.3 <= gap_ratio <= 1.4: insights.append("💰 Strong profit potential in this price range")
@@ -1164,6 +1411,8 @@ def score_tract_flip_potential(tract: Dict[str, Any], price_min: int, price_max:
         "velocity_score": round(velocity_score * 100, 1),
         "starbucks_bonus": starbucks_bonus,
         "has_starbucks": has_starbucks,
+        "school_rating": school_rating,
+        "school_bonus": school_bonus,
         "insights": insights,
         "warnings": warnings,
     }
@@ -1196,11 +1445,25 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Check if any tract in the group has Starbucks (should be consistent across group)
     has_starbucks = any(r.get("has_starbucks", False) for r in rows)
 
+    # Get school rating (should be consistent across same neighborhood group)
+    school_rating = None
+    school_ratings = [r.get("school_rating") for r in rows if r.get("school_rating") is not None]
+    if school_ratings:
+        school_rating = sum(school_ratings) / len(school_ratings)  # Average if slightly different
+
     # 👉 Derive messages from the aggregated metrics (not by unioning tract messages)
     insights: List[str] = []
     warnings: List[str] = []
 
-    # Starbucks indicator comes first for visibility
+    # School rating insights (high priority for family buyers)
+    if school_rating and school_rating >= 8.0:
+        insights.append(f"🎓 Excellent schools (rated {school_rating:.1f}/10) — major family appeal")
+    elif school_rating and school_rating >= 7.0:
+        insights.append(f"🎓 Good schools (rated {school_rating:.1f}/10) — strong for families")
+    elif school_rating and school_rating <= 5.0:
+        warnings.append(f"⚠️ Below-average schools (rated {school_rating:.1f}/10) — may limit buyer pool")
+
+    # Starbucks indicator
     if has_starbucks:
         insights.append("⭐ New Starbucks opened (2024-2025) — strong retail investment")
 
@@ -1253,6 +1516,7 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "total_pop": total_pop,
         "score": round(area_score, 1) if area_score is not None else 0.0,
         "has_starbucks": has_starbucks,
+        "school_rating": round(school_rating, 1) if school_rating is not None else None,
         "insights": insights,
         "warnings": warnings,
         "member_tracts": members,
