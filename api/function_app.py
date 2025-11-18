@@ -1252,6 +1252,114 @@ def fetch_census_data_with_retry(county_name: str, county_fips: str, max_retries
                 return None
     return None
 
+# === CENSUS TRACT BOUNDARIES ===
+
+# Cache for tract boundary polygons
+_tract_boundaries_cache = {}  # { tract_geoid: {"ts": ISO_UTC, "polygon": [[[lon, lat], ...]]} }
+TRACT_BOUNDARY_CACHE_DAYS = 30  # Boundaries don't change often
+
+def _cache_get_tract_boundary(tract_geoid: str):
+    """Get cached tract boundary polygon."""
+    entry = _tract_boundaries_cache.get(tract_geoid)
+    if not entry:
+        return None
+    try:
+        ts = datetime.fromisoformat(entry["ts"])
+        if datetime.utcnow() - ts > timedelta(days=TRACT_BOUNDARY_CACHE_DAYS):
+            del _tract_boundaries_cache[tract_geoid]
+            return None
+    except Exception:
+        del _tract_boundaries_cache[tract_geoid]
+        return None
+    return entry["polygon"]
+
+def _cache_set_tract_boundary(tract_geoid: str, polygon: List) -> None:
+    """Cache tract boundary polygon."""
+    _tract_boundaries_cache[tract_geoid] = {
+        "ts": datetime.utcnow().isoformat(),
+        "polygon": polygon
+    }
+
+def fetch_tract_boundary(state_fips: str, county_fips: str, tract_code: str) -> Optional[List]:
+    """
+    Fetch census tract boundary polygon from Census TIGER API.
+    Returns polygon as list of coordinate rings: [[[lon, lat], [lon, lat], ...]]
+    """
+    # Build full GEOID: state(2) + county(3) + tract(6)
+    geoid = f"{state_fips}{county_fips}{tract_code}"
+
+    # Check cache first
+    cached = _cache_get_tract_boundary(geoid)
+    if cached is not None:
+        return cached
+
+    # Fetch from TIGER API
+    tiger_url = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2023/MapServer/8/query"
+    params = {
+        "where": f"GEOID='{geoid}'",
+        "outFields": "*",
+        "returnGeometry": "true",
+        "f": "json"
+    }
+
+    try:
+        r = requests.get(tiger_url, params=params, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
+
+        features = data.get("features", [])
+        if not features:
+            logging.warning(f"No boundary found for tract {geoid}")
+            return None
+
+        # Extract polygon rings from first feature
+        geometry = features[0].get("geometry", {})
+        rings = geometry.get("rings", [])
+
+        if not rings:
+            logging.warning(f"No rings in geometry for tract {geoid}")
+            return None
+
+        # Cache and return
+        _cache_set_tract_boundary(geoid, rings)
+        return rings
+
+    except Exception as e:
+        logging.warning(f"Failed to fetch boundary for tract {geoid}: {e}")
+        return None
+
+def point_in_polygon(point_lon: float, point_lat: float, polygon_rings: List) -> bool:
+    """
+    Check if a point is inside a polygon using ray casting algorithm.
+    polygon_rings: list of rings, each ring is [[lon, lat], [lon, lat], ...]
+    """
+    if not polygon_rings:
+        return False
+
+    # Use first ring (exterior boundary)
+    polygon = polygon_rings[0]
+
+    # Ray casting algorithm
+    inside = False
+    n = len(polygon)
+
+    p1_lon, p1_lat = polygon[0]
+
+    for i in range(1, n + 1):
+        p2_lon, p2_lat = polygon[i % n]
+
+        if point_lat > min(p1_lat, p2_lat):
+            if point_lat <= max(p1_lat, p2_lat):
+                if point_lon <= max(p1_lon, p2_lon):
+                    if p1_lat != p2_lat:
+                        x_intersection = (point_lat - p1_lat) * (p2_lon - p1_lon) / (p2_lat - p1_lat) + p1_lon
+                    if p1_lon == p2_lon or point_lon <= x_intersection:
+                        inside = not inside
+
+        p1_lon, p1_lat = p2_lon, p2_lat
+
+    return inside
+
 # === MARKET DATA (optional) ===
 
 def get_market_stats_for_zip(zip_code: str) -> Dict[str, Optional[int]]:
@@ -1507,6 +1615,9 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "score": r.get("score")
     } for r in rows]
 
+    # Select primary tract for boundary filtering (highest score)
+    primary_tract = max(rows, key=lambda r: r.get("score", 0)) if rows else {}
+
     return {
         "median_home_value": round(med_home_val, 1) if med_home_val is not None else None,
         "median_income": round(med_income, 1) if med_income is not None else None,
@@ -1521,6 +1632,9 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "warnings": warnings,
         "member_tracts": members,
         "tracts_count": len(rows),
+        "primary_tract_code": primary_tract.get("tract"),
+        "primary_state_fips": primary_tract.get("state"),
+        "primary_county_fips": primary_tract.get("county"),
     }
 
 # === HTTP ===
@@ -1826,9 +1940,12 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="listings", methods=["GET"])
 def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Returns active listings for a ZIP using the same RapidAPI provider you already use.
+    Returns active listings for a ZIP, optionally filtered by census tract boundary.
     Query params:
-      zip          (required)
+      zip          (required) - ZIP code to search
+      tract        (optional) - 6-digit census tract code for boundary filtering
+      state_fips   (optional) - 2-digit state FIPS (default: 18 for Indiana)
+      county_fips  (optional) - 3-digit county FIPS (default: 097 for Marion)
       limit        default 12
       price_max    optional: user's max purchase price (for "under budget" count)
       arv          optional: ARV/median value, used with 'discount' to count the target band
@@ -1846,6 +1963,18 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"status": "error", "message": "zip is required"}),
             status_code=400, mimetype="application/json", headers=CORS_HEADERS
         )
+
+    # Optional tract boundary filtering
+    tract_code = (req.params.get("tract") or "").strip()
+    state_fips = (req.params.get("state_fips") or "18").strip()  # Default: Indiana
+    county_fips = (req.params.get("county_fips") or "097").strip()  # Default: Marion County
+
+    # Fetch tract boundary if tract filtering requested
+    tract_boundary = None
+    if tract_code:
+        tract_boundary = fetch_tract_boundary(state_fips, county_fips, tract_code)
+        if not tract_boundary:
+            logging.warning(f"Could not fetch boundary for tract {tract_code}, proceeding without filtering")
 
     try:
         limit = max(1, min(int(req.params.get("limit", "12")), 50))
@@ -1868,8 +1997,11 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         discount = 0.77
 
+    # Cache key includes tract if filtering by boundary
+    cache_key = f"{zip_code}:{tract_code}" if tract_code else zip_code
+
     # Cache hit?
-    cached = _cache_get_listings(zip_code)
+    cached = _cache_get_listings(cache_key)
     if cached is not None:
         data = cached
     else:
@@ -1929,6 +2061,25 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     state = addr.get("state_code") or addr.get("state") or ""
                     postal = addr.get("postal_code") or zip_code
 
+                    # Extract coordinates for tract boundary filtering
+                    location = p.get("location") or {}
+                    coordinate = location.get("coordinate") or {}
+                    prop_lat = coordinate.get("lat") or coordinate.get("latitude")
+                    prop_lon = coordinate.get("lon") or coordinate.get("lng") or coordinate.get("longitude")
+
+                    # If tract filtering is enabled, check if property is within boundary
+                    if tract_boundary:
+                        if not (prop_lat and prop_lon):
+                            # Skip properties without coordinates when filtering by tract
+                            continue
+                        try:
+                            if not point_in_polygon(float(prop_lon), float(prop_lat), tract_boundary):
+                                # Property is outside tract boundary, skip it
+                                continue
+                        except (ValueError, TypeError):
+                            # Invalid coordinates, skip
+                            continue
+
                     beds = p.get("description", {}).get("beds") or p.get("beds")
                     baths = p.get("description", {}).get("baths") or p.get("baths")
                     dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
@@ -1966,15 +2117,17 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     }
                 }
 
-            _cache_set_listings(zip_code, data)
+            _cache_set_listings(cache_key, data)
 
         except Exception as e:
-            logging.warning("Listings fetch failed for %s: %s", zip_code, e)
+            logging.warning("Listings fetch failed for %s: %s", cache_key, e)
             data = {"results": [], "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}}
 
     return func.HttpResponse(json.dumps({
         "status": "success",
         "zip": zip_code,
+        "tract": tract_code if tract_code else None,
+        "filtered_by_boundary": bool(tract_code and tract_boundary),
         "discount_used": discount,
         "counts": data.get("counts", {}),
         "results": data.get("results", [])
