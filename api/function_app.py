@@ -1972,8 +1972,11 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     # Fetch tract boundary if tract filtering requested
     tract_boundary = None
     if tract_code:
+        logging.info(f"Tract filtering requested: state={state_fips}, county={county_fips}, tract={tract_code}")
         tract_boundary = fetch_tract_boundary(state_fips, county_fips, tract_code)
-        if not tract_boundary:
+        if tract_boundary:
+            logging.info(f"Successfully fetched boundary with {len(tract_boundary)} rings, first ring has {len(tract_boundary[0])} points")
+        else:
             logging.warning(f"Could not fetch boundary for tract {tract_code}, proceeding without filtering")
 
     try:
@@ -2046,6 +2049,15 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                 if arv and discount:
                     target_price = int(arv * discount)
 
+                # Debug counters
+                total_props = len(props)
+                props_with_coords = 0
+                props_in_boundary = 0
+                props_skipped_no_coords = 0
+                props_skipped_outside = 0
+
+                logging.info(f"Processing {total_props} properties from ZIP {zip_code}, tract filter: {bool(tract_boundary)}")
+
                 for p in props:
                     # Normalize a handful of fields (many feeds use similar names)
                     price = (
@@ -2067,17 +2079,31 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     prop_lat = coordinate.get("lat") or coordinate.get("latitude")
                     prop_lon = coordinate.get("lon") or coordinate.get("lng") or coordinate.get("longitude")
 
+                    # Log first property structure for debugging
+                    if props_with_coords == 0 and props_skipped_no_coords == 0:
+                        logging.info(f"Sample property structure - location keys: {location.keys() if location else 'None'}")
+                        logging.info(f"Sample property structure - coordinate keys: {coordinate.keys() if coordinate else 'None'}")
+                        logging.info(f"Sample coords: lat={prop_lat}, lon={prop_lon}")
+
+                    if prop_lat and prop_lon:
+                        props_with_coords += 1
+
                     # If tract filtering is enabled, check if property is within boundary
                     if tract_boundary:
                         if not (prop_lat and prop_lon):
                             # Skip properties without coordinates when filtering by tract
+                            props_skipped_no_coords += 1
                             continue
                         try:
                             if not point_in_polygon(float(prop_lon), float(prop_lat), tract_boundary):
                                 # Property is outside tract boundary, skip it
+                                props_skipped_outside += 1
                                 continue
-                        except (ValueError, TypeError):
+                            props_in_boundary += 1
+                        except (ValueError, TypeError) as e:
                             # Invalid coordinates, skip
+                            logging.warning(f"Invalid coordinates for property: lat={prop_lat}, lon={prop_lon}, error={e}")
+                            props_skipped_no_coords += 1
                             continue
 
                     beds = p.get("description", {}).get("beds") or p.get("beds")
@@ -2107,6 +2133,17 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                         under_budget += 1
                     if target_price and price <= target_price:
                         in_target += 1
+
+                # Log filtering results
+                logging.info(f"Filtering results for ZIP {zip_code}:")
+                logging.info(f"  Total properties fetched: {total_props}")
+                logging.info(f"  Properties with coordinates: {props_with_coords}")
+                if tract_boundary:
+                    logging.info(f"  Tract filtering enabled: YES")
+                    logging.info(f"  Properties skipped (no coords): {props_skipped_no_coords}")
+                    logging.info(f"  Properties skipped (outside boundary): {props_skipped_outside}")
+                    logging.info(f"  Properties inside boundary: {props_in_boundary}")
+                logging.info(f"  Final items count: {len(items)}")
 
                 data = {
                     "results": sorted(items, key=lambda x: x["price"])[:limit],
