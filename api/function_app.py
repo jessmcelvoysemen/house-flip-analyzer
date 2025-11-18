@@ -2074,14 +2074,31 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     postal = addr.get("postal_code") or zip_code
 
                     # Extract coordinates for tract boundary filtering
+                    # Try multiple possible locations for coordinates in the response
                     location = p.get("location") or {}
-                    coordinate = location.get("coordinate") or {}
+                    prop_lat = None
+                    prop_lon = None
+
+                    # First try: location.address.coordinate (most common for Realtor.com API)
+                    coordinate = addr.get("coordinate") or {}
                     prop_lat = coordinate.get("lat") or coordinate.get("latitude")
                     prop_lon = coordinate.get("lon") or coordinate.get("lng") or coordinate.get("longitude")
+
+                    # Second try: location.coordinate
+                    if not (prop_lat and prop_lon):
+                        coordinate = location.get("coordinate") or {}
+                        prop_lat = coordinate.get("lat") or coordinate.get("latitude")
+                        prop_lon = coordinate.get("lon") or coordinate.get("lng") or coordinate.get("longitude")
+
+                    # Third try: direct on location
+                    if not (prop_lat and prop_lon):
+                        prop_lat = location.get("lat") or location.get("latitude")
+                        prop_lon = location.get("lon") or location.get("lng") or location.get("longitude")
 
                     # Log first property structure for debugging
                     if props_with_coords == 0 and props_skipped_no_coords == 0:
                         logging.info(f"Sample property structure - location keys: {location.keys() if location else 'None'}")
+                        logging.info(f"Sample property structure - addr keys: {addr.keys() if addr else 'None'}")
                         logging.info(f"Sample property structure - coordinate keys: {coordinate.keys() if coordinate else 'None'}")
                         logging.info(f"Sample coords: lat={prop_lat}, lon={prop_lon}")
 
