@@ -346,15 +346,15 @@
 
     // Lazy-load listings for a ZIP into a target element id
     var _loadedZip = new Set();
-    async function loadListingsOnce(zip, targetId, priceMax, arv, discount, tract, stateFips, countyFips){
+    async function loadListingsOnce(zip, targetId, priceMax, arv, discount, neighborhood){
       discount = (typeof discount === 'number') ? discount : 0.77;
       if(!zip || _loadedZip.has(targetId)) return;
       var target = document.getElementById(targetId);
       if(!target) return;
       _loadedZip.add(targetId);
-      const usingTractFilter = (tract && tract !== '');
-      const loadingMsg = usingTractFilter
-        ? 'Loading listings within neighborhood boundaries…'
+      const usingNeighborhood = (neighborhood && neighborhood !== '');
+      const loadingMsg = usingNeighborhood
+        ? 'Loading listings for ' + neighborhood + '…'
         : 'Loading listings for '+zip+'…';
       target.innerHTML = '<div class="loading"><div class="spinner"></div><p>'+loadingMsg+'</p></div>';
       try{
@@ -363,11 +363,9 @@
         if(arv) q.set('arv', String(arv));
         q.set('discount', String(discount));
 
-        // Add tract boundary filtering if available
-        if(usingTractFilter) {
-          q.set('tract', tract);
-          if(stateFips && stateFips !== '') q.set('state_fips', stateFips);
-          if(countyFips && countyFips !== '') q.set('county_fips', countyFips);
+        // Add neighborhood filtering if available
+        if(usingNeighborhood) {
+          q.set('neighborhood', neighborhood);
         }
 
         const res = await fetch(LIST_URL + '?' + q.toString());
@@ -383,9 +381,10 @@
         }
 
         const c = data.counts || {};
-        const filteredBoundary = data.filtered_by_boundary || false;
+        const filteredByNeighborhood = data.filtered_by_neighborhood || false;
+        const neighborhoodName = data.neighborhood || '';
         var head = '<div style="margin-bottom:8px;color:#475569">'
-          + (filteredBoundary ? '<span style="color:#16a34a;font-weight:600;">✓ Filtered to neighborhood boundary</span><br/>' : '')
+          + (filteredByNeighborhood ? '<span style="color:#16a34a;font-weight:600;">✓ Filtered to ' + neighborhoodName + '</span><br/>' : '')
           + 'Supply: <strong>'+(c.active_total||0)+'</strong> active · '
           + '≤ budget: <strong>'+(c.under_budget||0)+'</strong> · '
           + 'in target band: <strong>'+(c.in_target_band||0)+'</strong>'
@@ -594,9 +593,7 @@
 
         html += '<div class="tract-card"'
           + (zip ? (' data-zip="'+zip+'" data-listid="'+listId+'" data-arv="'+(item.median_home_value || '')+'"'
-                    + ' data-tract="'+(item.primary_tract_code || '')+'"'
-                    + ' data-state="'+(item.primary_state_fips || '')+'"'
-                    + ' data-county="'+(item.primary_county_fips || '')+'"') : '')
+                    + ' data-neighborhood="'+(item.neighborhood || '')+'"') : '')
           + '>'
           + '<div class="score-badge '+scoreClass+'"><div>'+score+'</div><div class="score-label">'+scoreLabel+'</div></div>'
           + '<div class="tract-title">'+title+'</div>'
@@ -620,13 +617,11 @@
         const zip = card.getAttribute('data-zip');
         const listId = card.getAttribute('data-listid');
         const arv = Number(card.getAttribute('data-arv') || 0);
-        const tract = card.getAttribute('data-tract');
-        const stateFips = card.getAttribute('data-state');
-        const countyFips = card.getAttribute('data-county');
+        const neighborhood = card.getAttribute('data-neighborhood');
         det.addEventListener('toggle', function(){
           if(det.open && zip && listId && det.querySelector('#'+listId)){
             const maxPrice = Number(document.getElementById('maxPrice').value || 0);
-            loadListingsOnce(zip, listId, maxPrice, arv, 0.77, tract, stateFips, countyFips);
+            loadListingsOnce(zip, listId, maxPrice, arv, 0.77, neighborhood);
           }
         });
       });

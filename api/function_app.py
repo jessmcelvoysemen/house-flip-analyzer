@@ -1941,10 +1941,13 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="listings", methods=["GET"])
 def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Returns active listings for a ZIP, optionally filtered by census tract boundary.
+    Returns active listings for a location.
     Query params:
       zip          (required) - ZIP code to search
-      tract        (optional) - 6-digit census tract code for boundary filtering
+      neighborhood (optional) - Neighborhood name for more specific filtering
+      city         (optional) - City name (defaults to Indianapolis for IN zips)
+      state        (optional) - State code (defaults to IN for Indianapolis zips)
+      tract        (optional) - 6-digit census tract code for boundary filtering (legacy)
       state_fips   (optional) - 2-digit state FIPS (default: 18 for Indiana)
       county_fips  (optional) - 3-digit county FIPS (default: 097 for Marion)
       limit        default 12
@@ -1965,7 +1968,12 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             status_code=400, mimetype="application/json", headers=CORS_HEADERS
         )
 
-    # Optional tract boundary filtering
+    # Get neighborhood/city parameters
+    neighborhood = (req.params.get("neighborhood") or "").strip()
+    city = (req.params.get("city") or "Indianapolis").strip()  # Default to Indianapolis
+    state_code = (req.params.get("state") or "IN").strip()  # Default to Indiana
+
+    # Legacy tract boundary filtering parameters (still supported as fallback)
     tract_code = (req.params.get("tract") or "").strip()
     state_fips = (req.params.get("state_fips") or "18").strip()  # Default: Indiana
     county_fips = (req.params.get("county_fips") or "097").strip()  # Default: Marion County
@@ -2001,8 +2009,13 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         discount = 0.77
 
-    # Cache key includes version, and tract if filtering by boundary
-    cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}:{tract_code}" if tract_code else f"{LISTINGS_CACHE_VERSION}:{zip_code}"
+    # Cache key includes version, neighborhood (or tract as fallback)
+    if neighborhood:
+        cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}:{neighborhood}"
+    elif tract_code:
+        cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}:{tract_code}"
+    else:
+        cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}"
 
     # Cache hit?
     cached = _cache_get_listings(cache_key)
@@ -2010,13 +2023,26 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
         data = cached
     else:
         # Call RapidAPI provider (same as DOM provider; different payload intent)
+        # Build location string: try neighborhood first, then city+state+zip
+        location_parts = []
+        if neighborhood:
+            # Try neighborhood name directly
+            location_parts.append(neighborhood)
+        location_parts.extend([city, state_code, zip_code])
+        location_str = ", ".join([p for p in location_parts if p])
+
         payload = {
             "limit": max(25, limit),   # fetch a few more so counts are meaningful
             "offset": 0,
             "postal_code": zip_code,
+            "location": location_str,  # Try adding location parameter
+            "city": city,
+            "state_code": state_code,
             "status": ["for_sale", "under_contract"],
             "sort": {"direction": "desc", "field": "list_date"},
         }
+
+        logging.info(f"Fetching listings with location: {location_str}")
         headers = {
             "Content-Type": "application/json",
             "x-rapidapi-key": RAPIDAPI_KEY,
@@ -2201,8 +2227,9 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(json.dumps({
         "status": "success",
         "zip": zip_code,
-        "tract": tract_code if tract_code else None,
+        "neighborhood": neighborhood if neighborhood else None,
         "filtered_by_boundary": data.get("filtering_applied", False),
+        "filtered_by_neighborhood": bool(neighborhood),
         "discount_used": discount,
         "counts": data.get("counts", {}),
         "results": data.get("results", [])
