@@ -1697,9 +1697,9 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             do_group = True
 
         try:
-            rehab_budget = int(req.params.get("rehab_budget", "40000"))
+            rehab_budget = int(req.params.get("rehab_budget", "15000"))
         except Exception:
-            rehab_budget = 40000
+            rehab_budget = 15000
 
         max_market_lookups = min(int(req.params.get("max_market_lookups", MAX_MARKET_LOOKUPS_DEFAULT)), 50)
 
