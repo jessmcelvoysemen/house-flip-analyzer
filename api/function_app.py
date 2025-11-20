@@ -1181,6 +1181,7 @@ def neighborhood_label(county_name: str, tract: str) -> str:
 # --- Listings cache (per ZIP) ---
 _listings_cache = {}  # { zip: {"ts": ISO_UTC, "data": {...}} }
 LISTINGS_CACHE_HOURS = 6
+LISTINGS_CACHE_VERSION = "v2"  # Increment to invalidate all cached listings
 
 def _cache_get_listings(zip_code: str):
     entry = _listings_cache.get(zip_code)
@@ -2000,8 +2001,8 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         discount = 0.77
 
-    # Cache key includes tract if filtering by boundary
-    cache_key = f"{zip_code}:{tract_code}" if tract_code else zip_code
+    # Cache key includes version, and tract if filtering by boundary
+    cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}:{tract_code}" if tract_code else f"{LISTINGS_CACHE_VERSION}:{zip_code}"
 
     # Cache hit?
     cached = _cache_get_listings(cache_key)
