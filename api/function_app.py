@@ -2078,133 +2078,100 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
 
                 # Debug counters
                 total_props = len(props)
-                props_with_coords = 0
-                props_in_boundary = 0
-                props_skipped_no_coords = 0
-                props_skipped_outside = 0
+                props_filtered_by_neighborhood = 0
+                props_skipped_no_match = 0
 
-                logging.info(f"Processing {total_props} properties from ZIP {zip_code}, tract filter: {bool(tract_boundary)}")
+                logging.info(f"Processing {total_props} properties from ZIP {zip_code}, neighborhood filter: '{neighborhood}'")
 
-                # Process properties twice if needed: first with filtering, then without if no results
-                for attempt in range(2):
-                    # On second attempt, disable tract filtering as fallback
-                    use_filtering = tract_boundary and (attempt == 0)
+                # Process properties - filter by neighborhood name if provided
+                for p in props:
+                    # Normalize a handful of fields (many feeds use similar names)
+                    price = (
+                        p.get("list_price") or p.get("price") or
+                        (p.get("location") or {}).get("address", {}).get("coordinate", {}).get("price")
+                    )
+                    if not isinstance(price, (int, float)):
+                        continue
 
-                    if attempt == 1 and len(items) > 0:
-                        # First attempt succeeded, don't need second attempt
-                        break
+                    addr = (p.get("location") or {}).get("address", {}) or {}
+                    line = addr.get("line") or ""
+                    city = addr.get("city") or ""
+                    state = addr.get("state_code") or addr.get("state") or ""
+                    postal = addr.get("postal_code") or zip_code
 
-                    if attempt == 1:
-                        logging.warning(f"Tract filtering resulted in 0 properties, retrying without boundary filter")
-                        items = []
-                        under_budget = 0
-                        in_target = 0
+                    # Get neighborhood from property data if available
+                    location = p.get("location") or {}
+                    prop_neighborhood = location.get("neighborhood") or location.get("community") or ""
 
-                    for p in props:
-                        # Normalize a handful of fields (many feeds use similar names)
-                        price = (
-                            p.get("list_price") or p.get("price") or
-                            (p.get("location") or {}).get("address", {}).get("coordinate", {}).get("price")
+                    # Log first property for debugging
+                    if props_filtered_by_neighborhood == 0 and props_skipped_no_match == 0 and neighborhood:
+                        logging.info(f"Sample property - neighborhood field: '{prop_neighborhood}', address: '{line}', city: '{city}'")
+
+                    # If neighborhood filter is active, check if property matches
+                    if neighborhood:
+                        # Check if neighborhood name appears in the property's neighborhood field or address
+                        neighborhood_lower = neighborhood.lower()
+                        # Normalize both for comparison (handle hyphens, spaces, etc.)
+                        neighborhood_normalized = neighborhood_lower.replace("-", " ").replace("_", " ")
+
+                        # Check property neighborhood field
+                        prop_neighborhood_normalized = prop_neighborhood.lower().replace("-", " ").replace("_", " ")
+                        # Also check the full address line
+                        full_address = f"{line} {city}".lower()
+
+                        # Match if neighborhood name is in the property's neighborhood field or address
+                        is_match = (
+                            neighborhood_normalized in prop_neighborhood_normalized or
+                            neighborhood_normalized in full_address or
+                            # Also try the original neighborhood name with hyphens/underscores
+                            neighborhood_lower in prop_neighborhood.lower() or
+                            neighborhood_lower in full_address
                         )
-                        if not isinstance(price, (int, float)):
+
+                        if not is_match:
+                            props_skipped_no_match += 1
                             continue
 
-                        addr = (p.get("location") or {}).get("address", {}) or {}
-                        line = addr.get("line") or ""
-                        city = addr.get("city") or ""
-                        state = addr.get("state_code") or addr.get("state") or ""
-                        postal = addr.get("postal_code") or zip_code
+                        props_filtered_by_neighborhood += 1
 
-                        # Extract coordinates for tract boundary filtering
-                        # Try multiple possible locations for coordinates in the response
-                        location = p.get("location") or {}
-                        prop_lat = None
-                        prop_lon = None
+                    beds = p.get("description", {}).get("beds") or p.get("beds")
+                    baths = p.get("description", {}).get("baths") or p.get("baths")
+                    dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
 
-                        # First try: location.address.coordinate (most common for Realtor.com API)
-                        coordinate = addr.get("coordinate") or {}
-                        prop_lat = coordinate.get("lat") or coordinate.get("latitude")
-                        prop_lon = coordinate.get("lon") or coordinate.get("lng") or coordinate.get("longitude")
+                    # Link & photo if present
+                    href = (p.get("href") or p.get("permalink") or p.get("rdc_web_url") or "")
+                    photo = ""
+                    photos = p.get("photos") or []
+                    if isinstance(photos, list) and photos:
+                        first = photos[0]
+                        photo = first.get("href") or first.get("url") or ""
 
-                        # Second try: location.coordinate
-                        if not (prop_lat and prop_lon):
-                            coordinate = location.get("coordinate") or {}
-                            prop_lat = coordinate.get("lat") or coordinate.get("latitude")
-                            prop_lon = coordinate.get("lon") or coordinate.get("lng") or coordinate.get("longitude")
+                    items.append({
+                        "price": int(price),
+                        "address": ", ".join([s for s in [line, city, state] if s]),
+                        "zip": postal,
+                        "beds": beds,
+                        "baths": baths,
+                        "dom": dom if isinstance(dom, int) else None,
+                        "url": href,
+                        "photo": photo
+                    })
 
-                        # Third try: direct on location
-                        if not (prop_lat and prop_lon):
-                            prop_lat = location.get("lat") or location.get("latitude")
-                            prop_lon = location.get("lon") or location.get("lng") or location.get("longitude")
-
-                        # Log first property structure for debugging
-                        if attempt == 0 and props_with_coords == 0 and props_skipped_no_coords == 0:
-                            logging.info(f"Sample property structure - location keys: {location.keys() if location else 'None'}")
-                            logging.info(f"Sample property structure - addr keys: {addr.keys() if addr else 'None'}")
-                            logging.info(f"Sample property structure - coordinate keys: {coordinate.keys() if coordinate else 'None'}")
-                            logging.info(f"Sample coords: lat={prop_lat}, lon={prop_lon}")
-
-                        if prop_lat and prop_lon:
-                            props_with_coords += 1
-
-                        # If tract filtering is enabled for this attempt, check if property is within boundary
-                        if use_filtering:
-                            if not (prop_lat and prop_lon):
-                                # Skip properties without coordinates when filtering by tract
-                                props_skipped_no_coords += 1
-                                continue
-                            try:
-                                if not point_in_polygon(float(prop_lon), float(prop_lat), tract_boundary):
-                                    # Property is outside tract boundary, skip it
-                                    props_skipped_outside += 1
-                                    continue
-                                props_in_boundary += 1
-                            except (ValueError, TypeError) as e:
-                                # Invalid coordinates, skip
-                                logging.warning(f"Invalid coordinates for property: lat={prop_lat}, lon={prop_lon}, error={e}")
-                                props_skipped_no_coords += 1
-                                continue
-
-                        beds = p.get("description", {}).get("beds") or p.get("beds")
-                        baths = p.get("description", {}).get("baths") or p.get("baths")
-                        dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
-
-                        # Link & photo if present
-                        href = (p.get("href") or p.get("permalink") or p.get("rdc_web_url") or "")
-                        photo = ""
-                        photos = p.get("photos") or []
-                        if isinstance(photos, list) and photos:
-                            first = photos[0]
-                            photo = first.get("href") or first.get("url") or ""
-
-                        items.append({
-                            "price": int(price),
-                            "address": ", ".join([s for s in [line, city, state] if s]),
-                            "zip": postal,
-                            "beds": beds,
-                            "baths": baths,
-                            "dom": dom if isinstance(dom, int) else None,
-                            "url": href,
-                            "photo": photo
-                        })
-
-                        if price_max and price <= price_max:
-                            under_budget += 1
-                        if target_price and price <= target_price:
-                            in_target += 1
+                    if price_max and price <= price_max:
+                        under_budget += 1
+                    if target_price and price <= target_price:
+                        in_target += 1
 
                 # Determine if filtering was actually applied
-                filtering_applied = tract_boundary and len(items) > 0 and props_in_boundary > 0
+                filtering_applied = bool(neighborhood and len(items) > 0)
 
                 # Log filtering results
                 logging.info(f"Filtering results for ZIP {zip_code}:")
                 logging.info(f"  Total properties fetched: {total_props}")
-                logging.info(f"  Properties with coordinates: {props_with_coords}")
-                if tract_boundary:
-                    logging.info(f"  Tract filtering requested: YES")
-                    logging.info(f"  Properties skipped (no coords): {props_skipped_no_coords}")
-                    logging.info(f"  Properties skipped (outside boundary): {props_skipped_outside}")
-                    logging.info(f"  Properties inside boundary: {props_in_boundary}")
+                if neighborhood:
+                    logging.info(f"  Neighborhood filter: '{neighborhood}'")
+                    logging.info(f"  Properties matched neighborhood: {props_filtered_by_neighborhood}")
+                    logging.info(f"  Properties skipped (no match): {props_skipped_no_match}")
                     logging.info(f"  Filtering actually applied: {filtering_applied}")
                 logging.info(f"  Final items count: {len(items)}")
 

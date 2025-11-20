@@ -573,13 +573,6 @@
           whySection = detailsBlock('💡 Why This Area', '<ul class="bullets">'+list+'</ul>');
         }
 
-        const members = (grouped && item.member_tracts && item.member_tracts.length)
-          ? detailsBlock('🧩 Included census tracts',
-              item.member_tracts.slice(0,12).map(function(m){ return m.tract_id; }).join(', ')
-              + (item.member_tracts.length>12 ? '…' : '')
-            )
-          : '';
-
         // Listings block (lazy)
         const listId = 'list-'+idx;
         const listingsDetails = zip
@@ -602,7 +595,6 @@
           + '<div class="tract-info">'+baseRows+'</div>'
           + flipCalc
           + whySection
-          + members
           + listingsDetails
           + '</div>';
       });
