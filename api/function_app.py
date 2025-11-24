@@ -1218,8 +1218,11 @@ def resolve_neighborhood_to_location_id(neighborhood: str, city: str, state_code
         r.raise_for_status()
         data = r.json()
 
+        logging.info(f"Autocomplete API response type: {type(data)}")
+        logging.info(f"Autocomplete API response: {data}")
+
         # Look for neighborhood or city match
-        autocomplete_results = data.get("autocomplete", [])
+        autocomplete_results = data.get("autocomplete", []) if data else []
         for result in autocomplete_results:
             result_area_type = result.get("area_type", "")
             result_city = result.get("city", "").lower()
@@ -2082,18 +2085,11 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         discount = 0.77
 
-    # Cache key includes version, neighborhood (or tract as fallback)
-    if neighborhood:
-        cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}:{neighborhood}"
-    elif tract_code:
+    # Cache key based on ZIP code (neighborhood filtering not supported)
+    if tract_code:
         cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}:{tract_code}"
     else:
         cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}"
-
-    # Resolve neighborhood to location ID if provided
-    location_id_data = None
-    if neighborhood:
-        location_id_data = resolve_neighborhood_to_location_id(neighborhood, city, state_code)
 
     # Cache hit?
     cached = _cache_get_listings(cache_key)
@@ -2109,17 +2105,8 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             "sort": {"direction": "desc", "field": "list_date"},
         }
 
-        # Use location ID if available (most precise), otherwise fall back to postal_code
-        if location_id_data and location_id_data.get("slug_id"):
-            payload["location"] = location_id_data["slug_id"]
-            logging.info(f"Fetching listings for location: {location_id_data['slug_id']}")
-        elif location_id_data and location_id_data.get("geo_id"):
-            payload["geo_id"] = location_id_data["geo_id"]
-            logging.info(f"Fetching listings for geo_id: {location_id_data['geo_id']}")
-        else:
-            # Fallback to postal code
-            payload["postal_code"] = zip_code
-            logging.info(f"Fetching listings for ZIP: {zip_code} (no location ID found)")
+        # Use postal_code for filtering (neighborhood filtering not supported)
+        payload["postal_code"] = zip_code
         headers = {
             "Content-Type": "application/json",
             "x-rapidapi-key": RAPIDAPI_KEY,
@@ -2144,6 +2131,17 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             else:
                 r.raise_for_status()
                 raw = r.json()
+
+                if raw is None:
+                    data = {"results": [], "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}}
+                    _cache_set_listings(cache_key, data)
+                    return func.HttpResponse(json.dumps({
+                        "status": "error",
+                        "message": "API returned empty response",
+                        "results": [],
+                        "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}
+                    }), mimetype="application/json", headers=CORS_HEADERS)
+
                 props = (raw or {}).get("data", {}).get("home_search", {}).get("results", []) or []
 
                 items = []
@@ -2154,9 +2152,9 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     target_price = int(arv * discount)
 
                 total_props = len(props)
-                logging.info(f"API returned {total_props} properties")
+                logging.info(f"API returned {total_props} properties for ZIP {zip_code}")
 
-                # Process properties - API already filtered by location if we provided location ID
+                # Process properties
                 for p in props:
                     # Normalize a handful of fields (many feeds use similar names)
                     price = (
@@ -2200,32 +2198,13 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     if target_price and price <= target_price:
                         in_target += 1
 
-                # Determine if filtering was actually applied by location ID (or if we fell back to ZIP)
-                filtering_applied = bool(location_id_data and (location_id_data.get("slug_id") or location_id_data.get("geo_id")))
-
-                # Log filtering results
-                logging.info(f"Filtering results for ZIP {zip_code}:")
-                logging.info(f"  Total properties returned: {total_props}")
-                if neighborhood:
-                    logging.info(f"  Neighborhood requested: '{neighborhood}'")
-                    if filtering_applied:
-                        logging.info(f"  Location ID filtering applied via API")
-                        if location_id_data.get("slug_id"):
-                            logging.info(f"  Used slug_id: {location_id_data['slug_id']}")
-                        else:
-                            logging.info(f"  Used geo_id: {location_id_data['geo_id']}")
-                    else:
-                        logging.info(f"  No location ID found - fell back to ZIP {zip_code}")
-                logging.info(f"  Final items count: {len(items)}")
-
                 data = {
                     "results": sorted(items, key=lambda x: x["price"])[:limit],
                     "counts": {
                         "active_total": len(items),
                         "under_budget": under_budget,
                         "in_target_band": in_target
-                    },
-                    "filtering_applied": filtering_applied
+                    }
                 }
 
             _cache_set_listings(cache_key, data)
@@ -2238,9 +2217,6 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
         "status": "success",
         "zip": zip_code,
         "neighborhood": neighborhood if neighborhood else None,
-        "filtered_by_boundary": data.get("filtering_applied", False),
-        "filtered_by_neighborhood": bool(neighborhood),
-        "discount_used": discount,
         "counts": data.get("counts", {}),
         "results": data.get("results", [])
     }, indent=2), mimetype="application/json", headers=CORS_HEADERS)
