@@ -1218,15 +1218,27 @@ def resolve_neighborhood_to_location_id(neighborhood: str, city: str, state_code
         r.raise_for_status()
         data = r.json()
 
+<<<<<<< HEAD
         logging.info(f"Autocomplete API response type: {type(data)}")
         logging.info(f"Autocomplete API response: {data}")
 
         # Look for neighborhood or city match
         autocomplete_results = data.get("autocomplete", []) if data else []
         for result in autocomplete_results:
+=======
+        # Log raw response for debugging
+        autocomplete_results = data.get("autocomplete", [])
+        logging.info(f"Autocomplete returned {len(autocomplete_results)} results")
+
+        # Look for neighborhood or city match
+        for idx, result in enumerate(autocomplete_results):
+>>>>>>> 5c0d606f117ef6da03ca0b90323ee0e71a0fee37
             result_area_type = result.get("area_type", "")
             result_city = result.get("city", "").lower()
             result_state = result.get("state_code", "").lower()
+            result_name = result.get("_id", "")
+
+            logging.info(f"  [{idx}] {result_name} - type: {result_area_type}, city: {result_city}, state: {result_state}")
 
             # Prefer neighborhood type, but accept city too
             if result_state == state_code.lower():
@@ -1238,7 +1250,7 @@ def resolve_neighborhood_to_location_id(neighborhood: str, city: str, state_code
                         "city": result.get("city"),
                         "state_code": result.get("state_code")
                     }
-                    logging.info(f"Found location: {location_data}")
+                    logging.info(f"✓ Matched location: {location_data}")
 
                     # Cache it
                     _location_id_cache[cache_key] = {
@@ -1247,11 +1259,11 @@ def resolve_neighborhood_to_location_id(neighborhood: str, city: str, state_code
                     }
                     return location_data
 
-        logging.warning(f"No location found for '{search_query}'")
+        logging.warning(f"✗ No matching location found for '{search_query}' in {len(autocomplete_results)} results")
         return None
 
     except Exception as e:
-        logging.warning(f"Failed to resolve location '{search_query}': {e}")
+        logging.error(f"✗ Exception resolving location '{search_query}': {e}")
         return None
 
 # --- Listings cache (per ZIP) ---
@@ -2198,6 +2210,27 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     if target_price and price <= target_price:
                         in_target += 1
 
+<<<<<<< HEAD
+=======
+                # Determine if filtering was actually applied by location ID (or if we fell back to ZIP)
+                filtering_applied = bool(location_id_data and (location_id_data.get("slug_id") or location_id_data.get("geo_id")))
+
+                # Log filtering results
+                logging.info(f"Filtering results for ZIP {zip_code}:")
+                logging.info(f"  Total properties returned: {total_props}")
+                if neighborhood:
+                    logging.info(f"  Neighborhood requested: '{neighborhood}'")
+                    if filtering_applied and location_id_data:
+                        logging.info(f"  Location ID filtering applied via API")
+                        if location_id_data.get("slug_id"):
+                            logging.info(f"  Used slug_id: {location_id_data['slug_id']}")
+                        elif location_id_data.get("geo_id"):
+                            logging.info(f"  Used geo_id: {location_id_data['geo_id']}")
+                    else:
+                        logging.info(f"  No location ID found - fell back to ZIP {zip_code}")
+                logging.info(f"  Final items count: {len(items)}")
+
+>>>>>>> 5c0d606f117ef6da03ca0b90323ee0e71a0fee37
                 data = {
                     "results": sorted(items, key=lambda x: x["price"])[:limit],
                     "counts": {
