@@ -20,6 +20,7 @@ RAPIDAPI_TEST_URL = os.environ.get(
     "RAPIDAPI_TEST_URL",
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
+RAPIDAPI_AUTOCOMPLETE_URL = "https://realty-in-us.p.rapidapi.com/locations/v2/auto-complete"
 
 # School ratings by neighborhood/city (1-10 scale)
 # Based on district performance, test scores, and school quality metrics
@@ -1178,10 +1179,82 @@ def neighborhood_label(county_name: str, tract: str) -> str:
 
     return f"{county_name} County"
 
+# --- Location ID cache ---
+_location_id_cache = {}  # { "neighborhood_city": {"ts": ISO_UTC, "location_data": {...}} }
+LOCATION_ID_CACHE_DAYS = 30  # Location IDs don't change
+
+def resolve_neighborhood_to_location_id(neighborhood: str, city: str, state_code: str) -> Optional[dict]:
+    """
+    Resolve a neighborhood name to a location ID using the autocomplete endpoint.
+    Returns dict with 'area_type', 'slug_id', 'geo_id' if found.
+    """
+    cache_key = f"{neighborhood}_{city}_{state_code}".lower()
+
+    # Check cache
+    if cache_key in _location_id_cache:
+        entry = _location_id_cache[cache_key]
+        try:
+            ts = datetime.fromisoformat(entry["ts"])
+            if datetime.utcnow() - ts < timedelta(days=LOCATION_ID_CACHE_DAYS):
+                return entry.get("location_data")
+        except Exception:
+            pass
+
+    # Call autocomplete API
+    search_query = f"{neighborhood} {city}"
+    headers = {
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": RAPIDAPI_HOST,
+    }
+
+    try:
+        logging.info(f"Resolving location: '{search_query}'")
+        r = requests.get(
+            RAPIDAPI_AUTOCOMPLETE_URL,
+            params={"input": search_query, "limit": "10"},
+            headers=headers,
+            timeout=REQUEST_TIMEOUT
+        )
+        r.raise_for_status()
+        data = r.json()
+
+        # Look for neighborhood or city match
+        autocomplete_results = data.get("autocomplete", [])
+        for result in autocomplete_results:
+            result_area_type = result.get("area_type", "")
+            result_city = result.get("city", "").lower()
+            result_state = result.get("state_code", "").lower()
+
+            # Prefer neighborhood type, but accept city too
+            if result_state == state_code.lower():
+                if result_area_type == "neighborhood" or result_area_type == "city":
+                    location_data = {
+                        "area_type": result_area_type,
+                        "slug_id": result.get("slug_id"),
+                        "geo_id": result.get("geo_id"),
+                        "city": result.get("city"),
+                        "state_code": result.get("state_code")
+                    }
+                    logging.info(f"Found location: {location_data}")
+
+                    # Cache it
+                    _location_id_cache[cache_key] = {
+                        "ts": datetime.utcnow().isoformat(),
+                        "location_data": location_data
+                    }
+                    return location_data
+
+        logging.warning(f"No location found for '{search_query}'")
+        return None
+
+    except Exception as e:
+        logging.warning(f"Failed to resolve location '{search_query}': {e}")
+        return None
+
 # --- Listings cache (per ZIP) ---
 _listings_cache = {}  # { zip: {"ts": ISO_UTC, "data": {...}} }
 LISTINGS_CACHE_HOURS = 6
-LISTINGS_CACHE_VERSION = "v2"  # Increment to invalidate all cached listings
+LISTINGS_CACHE_VERSION = "v3"  # Increment to invalidate all cached listings
 
 def _cache_get_listings(zip_code: str):
     entry = _listings_cache.get(zip_code)
@@ -2017,32 +2090,36 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     else:
         cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}"
 
+    # Resolve neighborhood to location ID if provided
+    location_id_data = None
+    if neighborhood:
+        location_id_data = resolve_neighborhood_to_location_id(neighborhood, city, state_code)
+
     # Cache hit?
     cached = _cache_get_listings(cache_key)
     if cached is not None:
         data = cached
     else:
-        # Call RapidAPI provider (same as DOM provider; different payload intent)
-        # Build location string: try neighborhood first, then city+state+zip
-        location_parts = []
-        if neighborhood:
-            # Try neighborhood name directly
-            location_parts.append(neighborhood)
-        location_parts.extend([city, state_code, zip_code])
-        location_str = ", ".join([p for p in location_parts if p])
-
+        # Call RapidAPI provider
+        # Build payload - prefer location ID if we have it, otherwise use postal_code
         payload = {
-            "limit": max(25, limit),   # fetch a few more so counts are meaningful
+            "limit": max(25, limit),
             "offset": 0,
-            "postal_code": zip_code,
-            "location": location_str,  # Try adding location parameter
-            "city": city,
-            "state_code": state_code,
             "status": ["for_sale", "under_contract"],
             "sort": {"direction": "desc", "field": "list_date"},
         }
 
-        logging.info(f"Fetching listings with location: {location_str}")
+        # Use location ID if available (most precise), otherwise fall back to postal_code
+        if location_id_data and location_id_data.get("slug_id"):
+            payload["location"] = location_id_data["slug_id"]
+            logging.info(f"Fetching listings for location: {location_id_data['slug_id']}")
+        elif location_id_data and location_id_data.get("geo_id"):
+            payload["geo_id"] = location_id_data["geo_id"]
+            logging.info(f"Fetching listings for geo_id: {location_id_data['geo_id']}")
+        else:
+            # Fallback to postal code
+            payload["postal_code"] = zip_code
+            logging.info(f"Fetching listings for ZIP: {zip_code} (no location ID found)")
         headers = {
             "Content-Type": "application/json",
             "x-rapidapi-key": RAPIDAPI_KEY,
@@ -2076,129 +2153,69 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                 if arv and discount:
                     target_price = int(arv * discount)
 
-                # Debug counters
                 total_props = len(props)
-                props_filtered_by_neighborhood = 0
-                props_skipped_no_match = 0
+                logging.info(f"API returned {total_props} properties")
 
-                logging.info(f"Processing {total_props} properties from ZIP {zip_code}, neighborhood filter: '{neighborhood}'")
+                # Process properties - API already filtered by location if we provided location ID
+                for p in props:
+                    # Normalize a handful of fields (many feeds use similar names)
+                    price = (
+                        p.get("list_price") or p.get("price") or
+                        (p.get("location") or {}).get("address", {}).get("coordinate", {}).get("price")
+                    )
+                    if not isinstance(price, (int, float)):
+                        continue
 
-                # Log first property structure to see what fields we have
-                if props and neighborhood:
-                    first_prop = props[0]
-                    first_location = first_prop.get("location") or {}
-                    logging.info(f"Sample property location keys: {list(first_location.keys())}")
-                    logging.info(f"Sample property top-level keys: {list(first_prop.keys())}")
+                    addr = (p.get("location") or {}).get("address", {}) or {}
+                    line = addr.get("line") or ""
+                    city_name = addr.get("city") or ""
+                    state = addr.get("state_code") or addr.get("state") or ""
+                    postal = addr.get("postal_code") or zip_code
 
-                # Process properties - filter by neighborhood name if provided
-                # We'll do TWO passes: first with filtering, then without if we get 0 results
-                for pass_num in range(2):
-                    # Second pass: disable filtering as fallback
-                    use_neighborhood_filter = neighborhood and (pass_num == 0)
+                    beds = p.get("description", {}).get("beds") or p.get("beds")
+                    baths = p.get("description", {}).get("baths") or p.get("baths")
+                    dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
 
-                    if pass_num == 1:
-                        if len(items) > 0:
-                            # First pass succeeded, no need for second pass
-                            break
-                        logging.warning(f"Neighborhood filtering returned 0 results, showing all ZIP {zip_code} listings as fallback")
-                        # Reset counters for second pass
-                        items = []
-                        under_budget = 0
-                        in_target = 0
-                        props_filtered_by_neighborhood = 0
-                        props_skipped_no_match = 0
+                    # Link & photo if present
+                    href = (p.get("href") or p.get("permalink") or p.get("rdc_web_url") or "")
+                    photo = ""
+                    photos = p.get("photos") or []
+                    if isinstance(photos, list) and photos:
+                        first = photos[0]
+                        photo = first.get("href") or first.get("url") or ""
 
-                    for p in props:
-                        # Normalize a handful of fields (many feeds use similar names)
-                        price = (
-                            p.get("list_price") or p.get("price") or
-                            (p.get("location") or {}).get("address", {}).get("coordinate", {}).get("price")
-                        )
-                        if not isinstance(price, (int, float)):
-                            continue
+                    items.append({
+                        "price": int(price),
+                        "address": ", ".join([s for s in [line, city_name, state] if s]),
+                        "zip": postal,
+                        "beds": beds,
+                        "baths": baths,
+                        "dom": dom if isinstance(dom, int) else None,
+                        "url": href,
+                        "photo": photo
+                    })
 
-                        addr = (p.get("location") or {}).get("address", {}) or {}
-                        line = addr.get("line") or ""
-                        city = addr.get("city") or ""
-                        state = addr.get("state_code") or addr.get("state") or ""
-                        postal = addr.get("postal_code") or zip_code
+                    if price_max and price <= price_max:
+                        under_budget += 1
+                    if target_price and price <= target_price:
+                        in_target += 1
 
-                        # Get neighborhood from property data if available
-                        location = p.get("location") or {}
-                        prop_neighborhood = location.get("neighborhood") or location.get("community") or ""
-
-                        # Log first property for debugging (only on first pass)
-                        if pass_num == 0 and props_filtered_by_neighborhood == 0 and props_skipped_no_match == 0 and neighborhood:
-                            logging.info(f"Sample property - neighborhood field: '{prop_neighborhood}', address: '{line}', city: '{city}'")
-
-                        # If neighborhood filter is active for this pass, check if property matches
-                        if use_neighborhood_filter:
-                            # Check if neighborhood name appears in the property's neighborhood field or address
-                            neighborhood_lower = neighborhood.lower()
-                            # Normalize both for comparison (handle hyphens, spaces, etc.)
-                            neighborhood_normalized = neighborhood_lower.replace("-", " ").replace("_", " ")
-
-                            # Check property neighborhood field
-                            prop_neighborhood_normalized = prop_neighborhood.lower().replace("-", " ").replace("_", " ")
-                            # Also check the full address line
-                            full_address = f"{line} {city}".lower()
-
-                            # Match if neighborhood name is in the property's neighborhood field or address
-                            is_match = (
-                                neighborhood_normalized in prop_neighborhood_normalized or
-                                neighborhood_normalized in full_address or
-                                # Also try the original neighborhood name with hyphens/underscores
-                                neighborhood_lower in prop_neighborhood.lower() or
-                                neighborhood_lower in full_address
-                            )
-
-                            if not is_match:
-                                props_skipped_no_match += 1
-                                continue
-
-                            props_filtered_by_neighborhood += 1
-
-                        beds = p.get("description", {}).get("beds") or p.get("beds")
-                        baths = p.get("description", {}).get("baths") or p.get("baths")
-                        dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
-
-                        # Link & photo if present
-                        href = (p.get("href") or p.get("permalink") or p.get("rdc_web_url") or "")
-                        photo = ""
-                        photos = p.get("photos") or []
-                        if isinstance(photos, list) and photos:
-                            first = photos[0]
-                            photo = first.get("href") or first.get("url") or ""
-
-                        items.append({
-                            "price": int(price),
-                            "address": ", ".join([s for s in [line, city, state] if s]),
-                            "zip": postal,
-                            "beds": beds,
-                            "baths": baths,
-                            "dom": dom if isinstance(dom, int) else None,
-                            "url": href,
-                            "photo": photo
-                        })
-
-                        if price_max and price <= price_max:
-                            under_budget += 1
-                        if target_price and price <= target_price:
-                            in_target += 1
-
-                # Determine if filtering was actually applied (or if we fell back to all ZIP)
-                filtering_applied = bool(neighborhood and props_filtered_by_neighborhood > 0)
+                # Determine if filtering was actually applied by location ID (or if we fell back to ZIP)
+                filtering_applied = bool(location_id_data and (location_id_data.get("slug_id") or location_id_data.get("geo_id")))
 
                 # Log filtering results
                 logging.info(f"Filtering results for ZIP {zip_code}:")
-                logging.info(f"  Total properties fetched: {total_props}")
+                logging.info(f"  Total properties returned: {total_props}")
                 if neighborhood:
-                    logging.info(f"  Neighborhood filter: '{neighborhood}'")
-                    logging.info(f"  Properties matched neighborhood: {props_filtered_by_neighborhood}")
-                    logging.info(f"  Properties skipped (no match): {props_skipped_no_match}")
-                    logging.info(f"  Filtering actually applied: {filtering_applied}")
-                    if not filtering_applied and len(items) > 0:
-                        logging.info(f"  Used fallback: showing all ZIP listings")
+                    logging.info(f"  Neighborhood requested: '{neighborhood}'")
+                    if filtering_applied:
+                        logging.info(f"  Location ID filtering applied via API")
+                        if location_id_data.get("slug_id"):
+                            logging.info(f"  Used slug_id: {location_id_data['slug_id']}")
+                        else:
+                            logging.info(f"  Used geo_id: {location_id_data['geo_id']}")
+                    else:
+                        logging.info(f"  No location ID found - fell back to ZIP {zip_code}")
                 logging.info(f"  Final items count: {len(items)}")
 
                 data = {
