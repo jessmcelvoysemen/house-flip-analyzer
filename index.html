@@ -383,9 +383,15 @@
         const c = data.counts || {};
         const filteredByNeighborhood = data.filtered_by_neighborhood || false;
         const neighborhoodName = data.neighborhood || '';
-        var head = '<div style="margin-bottom:8px;color:#475569">'
-          + (filteredByNeighborhood ? '<span style="color:#16a34a;font-weight:600;">✓ Filtered to ' + neighborhoodName + '</span><br/>' : '')
-          + 'Supply: <strong>'+(c.active_total||0)+'</strong> active · '
+        const requestedNeighborhood = data.neighborhood ? true : false;
+
+        var head = '<div style="margin-bottom:8px;color:#475569">';
+        if (filteredByNeighborhood) {
+          head += '<span style="color:#16a34a;font-weight:600;">✓ Filtered to ' + neighborhoodName + '</span><br/>';
+        } else if (requestedNeighborhood) {
+          head += '<span style="color:#f59e0b;font-weight:600;">⚠️ Showing all ZIP listings (neighborhood filter unavailable)</span><br/>';
+        }
+        head += 'Supply: <strong>'+(c.active_total||0)+'</strong> active · '
           + '≤ budget: <strong>'+(c.under_budget||0)+'</strong> · '
           + 'in target band: <strong>'+(c.in_target_band||0)+'</strong>'
           + '</div>';

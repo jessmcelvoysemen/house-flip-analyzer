@@ -2083,87 +2083,111 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
 
                 logging.info(f"Processing {total_props} properties from ZIP {zip_code}, neighborhood filter: '{neighborhood}'")
 
+                # Log first property structure to see what fields we have
+                if props and neighborhood:
+                    first_prop = props[0]
+                    first_location = first_prop.get("location") or {}
+                    logging.info(f"Sample property location keys: {list(first_location.keys())}")
+                    logging.info(f"Sample property top-level keys: {list(first_prop.keys())}")
+
                 # Process properties - filter by neighborhood name if provided
-                for p in props:
-                    # Normalize a handful of fields (many feeds use similar names)
-                    price = (
-                        p.get("list_price") or p.get("price") or
-                        (p.get("location") or {}).get("address", {}).get("coordinate", {}).get("price")
-                    )
-                    if not isinstance(price, (int, float)):
-                        continue
+                # We'll do TWO passes: first with filtering, then without if we get 0 results
+                for pass_num in range(2):
+                    # Second pass: disable filtering as fallback
+                    use_neighborhood_filter = neighborhood and (pass_num == 0)
 
-                    addr = (p.get("location") or {}).get("address", {}) or {}
-                    line = addr.get("line") or ""
-                    city = addr.get("city") or ""
-                    state = addr.get("state_code") or addr.get("state") or ""
-                    postal = addr.get("postal_code") or zip_code
+                    if pass_num == 1:
+                        if len(items) > 0:
+                            # First pass succeeded, no need for second pass
+                            break
+                        logging.warning(f"Neighborhood filtering returned 0 results, showing all ZIP {zip_code} listings as fallback")
+                        # Reset counters for second pass
+                        items = []
+                        under_budget = 0
+                        in_target = 0
+                        props_filtered_by_neighborhood = 0
+                        props_skipped_no_match = 0
 
-                    # Get neighborhood from property data if available
-                    location = p.get("location") or {}
-                    prop_neighborhood = location.get("neighborhood") or location.get("community") or ""
-
-                    # Log first property for debugging
-                    if props_filtered_by_neighborhood == 0 and props_skipped_no_match == 0 and neighborhood:
-                        logging.info(f"Sample property - neighborhood field: '{prop_neighborhood}', address: '{line}', city: '{city}'")
-
-                    # If neighborhood filter is active, check if property matches
-                    if neighborhood:
-                        # Check if neighborhood name appears in the property's neighborhood field or address
-                        neighborhood_lower = neighborhood.lower()
-                        # Normalize both for comparison (handle hyphens, spaces, etc.)
-                        neighborhood_normalized = neighborhood_lower.replace("-", " ").replace("_", " ")
-
-                        # Check property neighborhood field
-                        prop_neighborhood_normalized = prop_neighborhood.lower().replace("-", " ").replace("_", " ")
-                        # Also check the full address line
-                        full_address = f"{line} {city}".lower()
-
-                        # Match if neighborhood name is in the property's neighborhood field or address
-                        is_match = (
-                            neighborhood_normalized in prop_neighborhood_normalized or
-                            neighborhood_normalized in full_address or
-                            # Also try the original neighborhood name with hyphens/underscores
-                            neighborhood_lower in prop_neighborhood.lower() or
-                            neighborhood_lower in full_address
+                    for p in props:
+                        # Normalize a handful of fields (many feeds use similar names)
+                        price = (
+                            p.get("list_price") or p.get("price") or
+                            (p.get("location") or {}).get("address", {}).get("coordinate", {}).get("price")
                         )
-
-                        if not is_match:
-                            props_skipped_no_match += 1
+                        if not isinstance(price, (int, float)):
                             continue
 
-                        props_filtered_by_neighborhood += 1
+                        addr = (p.get("location") or {}).get("address", {}) or {}
+                        line = addr.get("line") or ""
+                        city = addr.get("city") or ""
+                        state = addr.get("state_code") or addr.get("state") or ""
+                        postal = addr.get("postal_code") or zip_code
 
-                    beds = p.get("description", {}).get("beds") or p.get("beds")
-                    baths = p.get("description", {}).get("baths") or p.get("baths")
-                    dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
+                        # Get neighborhood from property data if available
+                        location = p.get("location") or {}
+                        prop_neighborhood = location.get("neighborhood") or location.get("community") or ""
 
-                    # Link & photo if present
-                    href = (p.get("href") or p.get("permalink") or p.get("rdc_web_url") or "")
-                    photo = ""
-                    photos = p.get("photos") or []
-                    if isinstance(photos, list) and photos:
-                        first = photos[0]
-                        photo = first.get("href") or first.get("url") or ""
+                        # Log first property for debugging (only on first pass)
+                        if pass_num == 0 and props_filtered_by_neighborhood == 0 and props_skipped_no_match == 0 and neighborhood:
+                            logging.info(f"Sample property - neighborhood field: '{prop_neighborhood}', address: '{line}', city: '{city}'")
 
-                    items.append({
-                        "price": int(price),
-                        "address": ", ".join([s for s in [line, city, state] if s]),
-                        "zip": postal,
-                        "beds": beds,
-                        "baths": baths,
-                        "dom": dom if isinstance(dom, int) else None,
-                        "url": href,
-                        "photo": photo
-                    })
+                        # If neighborhood filter is active for this pass, check if property matches
+                        if use_neighborhood_filter:
+                            # Check if neighborhood name appears in the property's neighborhood field or address
+                            neighborhood_lower = neighborhood.lower()
+                            # Normalize both for comparison (handle hyphens, spaces, etc.)
+                            neighborhood_normalized = neighborhood_lower.replace("-", " ").replace("_", " ")
 
-                    if price_max and price <= price_max:
-                        under_budget += 1
-                    if target_price and price <= target_price:
-                        in_target += 1
+                            # Check property neighborhood field
+                            prop_neighborhood_normalized = prop_neighborhood.lower().replace("-", " ").replace("_", " ")
+                            # Also check the full address line
+                            full_address = f"{line} {city}".lower()
 
-                # Determine if filtering was actually applied
-                filtering_applied = bool(neighborhood and len(items) > 0)
+                            # Match if neighborhood name is in the property's neighborhood field or address
+                            is_match = (
+                                neighborhood_normalized in prop_neighborhood_normalized or
+                                neighborhood_normalized in full_address or
+                                # Also try the original neighborhood name with hyphens/underscores
+                                neighborhood_lower in prop_neighborhood.lower() or
+                                neighborhood_lower in full_address
+                            )
+
+                            if not is_match:
+                                props_skipped_no_match += 1
+                                continue
+
+                            props_filtered_by_neighborhood += 1
+
+                        beds = p.get("description", {}).get("beds") or p.get("beds")
+                        baths = p.get("description", {}).get("baths") or p.get("baths")
+                        dom = p.get("days_on_market") or p.get("list_days_on_market") or p.get("dom")
+
+                        # Link & photo if present
+                        href = (p.get("href") or p.get("permalink") or p.get("rdc_web_url") or "")
+                        photo = ""
+                        photos = p.get("photos") or []
+                        if isinstance(photos, list) and photos:
+                            first = photos[0]
+                            photo = first.get("href") or first.get("url") or ""
+
+                        items.append({
+                            "price": int(price),
+                            "address": ", ".join([s for s in [line, city, state] if s]),
+                            "zip": postal,
+                            "beds": beds,
+                            "baths": baths,
+                            "dom": dom if isinstance(dom, int) else None,
+                            "url": href,
+                            "photo": photo
+                        })
+
+                        if price_max and price <= price_max:
+                            under_budget += 1
+                        if target_price and price <= target_price:
+                            in_target += 1
+
+                # Determine if filtering was actually applied (or if we fell back to all ZIP)
+                filtering_applied = bool(neighborhood and props_filtered_by_neighborhood > 0)
 
                 # Log filtering results
                 logging.info(f"Filtering results for ZIP {zip_code}:")
@@ -2173,6 +2197,8 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     logging.info(f"  Properties matched neighborhood: {props_filtered_by_neighborhood}")
                     logging.info(f"  Properties skipped (no match): {props_skipped_no_match}")
                     logging.info(f"  Filtering actually applied: {filtering_applied}")
+                    if not filtering_applied and len(items) > 0:
+                        logging.info(f"  Used fallback: showing all ZIP listings")
                 logging.info(f"  Final items count: {len(items)}")
 
                 data = {
