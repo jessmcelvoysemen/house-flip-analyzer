@@ -1218,21 +1218,12 @@ def resolve_neighborhood_to_location_id(neighborhood: str, city: str, state_code
         r.raise_for_status()
         data = r.json()
 
-<<<<<<< HEAD
-        logging.info(f"Autocomplete API response type: {type(data)}")
-        logging.info(f"Autocomplete API response: {data}")
-
-        # Look for neighborhood or city match
-        autocomplete_results = data.get("autocomplete", []) if data else []
-        for result in autocomplete_results:
-=======
         # Log raw response for debugging
         autocomplete_results = data.get("autocomplete", [])
         logging.info(f"Autocomplete returned {len(autocomplete_results)} results")
 
         # Look for neighborhood or city match
         for idx, result in enumerate(autocomplete_results):
->>>>>>> 5c0d606f117ef6da03ca0b90323ee0e71a0fee37
             result_area_type = result.get("area_type", "")
             result_city = result.get("city", "").lower()
             result_state = result.get("state_code", "").lower()
@@ -2210,8 +2201,6 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     if target_price and price <= target_price:
                         in_target += 1
 
-<<<<<<< HEAD
-=======
                 # Determine if filtering was actually applied by location ID (or if we fell back to ZIP)
                 filtering_applied = bool(location_id_data and (location_id_data.get("slug_id") or location_id_data.get("geo_id")))
 
@@ -2230,7 +2219,6 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                         logging.info(f"  No location ID found - fell back to ZIP {zip_code}")
                 logging.info(f"  Final items count: {len(items)}")
 
->>>>>>> 5c0d606f117ef6da03ca0b90323ee0e71a0fee37
                 data = {
                     "results": sorted(items, key=lambda x: x["price"])[:limit],
                     "counts": {
