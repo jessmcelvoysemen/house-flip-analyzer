@@ -21,6 +21,11 @@ jobs:
           submodules: true
           lfs: false
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1
@@ -33,7 +38,7 @@ jobs:
           api_location: "api" # Location of your Python functions
           output_location: "" # Leave empty since you don't have a build process
           skip_app_build: true # Skip build for static HTML app
-          deployment_environment: "Production"
+          skip_api_build: false # Let Azure build the Python API
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
