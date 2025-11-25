@@ -158,7 +158,7 @@
       </div>
       <div class="form-group rehab">
         <label for="rehabBudget" class="form-label">Rehab Budget</label>
-        <input id="rehabBudget" class="form-input" type="number" value="40000" step="1000" />
+        <input id="rehabBudget" class="form-input" type="number" value="15000" step="1000" />
         <div class="form-hint">Used in profit/ROI estimate</div>
       </div>
       <div class="switches">
@@ -187,7 +187,7 @@
 
       const minPrice = Number(document.getElementById('minPrice').value || 150000);
       const maxPrice = Number(document.getElementById('maxPrice').value || 250000);
-      const rehabBudget = Number(document.getElementById('rehabBudget').value || 40000);
+      const rehabBudget = Number(document.getElementById('rehabBudget').value || 15000);
       const includeMarketData = !!(document.getElementById('includeMarketData') && document.getElementById('includeMarketData').checked);
       const groupNeighborhoods = (document.getElementById('groupNeighborhoods') && document.getElementById('groupNeighborhoods').checked) ? 1 : 0;
 
@@ -346,18 +346,27 @@
 
     // Lazy-load listings for a ZIP into a target element id
     var _loadedZip = new Set();
-    async function loadListingsOnce(zip, targetId, priceMax, arv, discount){
+    async function loadListingsOnce(zip, targetId, priceMax, arv, discount, neighborhood){
       discount = (typeof discount === 'number') ? discount : 0.77;
       if(!zip || _loadedZip.has(targetId)) return;
       var target = document.getElementById(targetId);
       if(!target) return;
       _loadedZip.add(targetId);
-      target.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading listings for '+zip+'…</p></div>';
+      const usingNeighborhood = (neighborhood && neighborhood !== '');
+      const loadingMsg = usingNeighborhood
+        ? 'Loading listings for ' + neighborhood + '…'
+        : 'Loading listings for '+zip+'…';
+      target.innerHTML = '<div class="loading"><div class="spinner"></div><p>'+loadingMsg+'</p></div>';
       try{
         var q = new URLSearchParams({ zip: zip, limit: '12' });
         if(priceMax) q.set('price_max', String(priceMax));
         if(arv) q.set('arv', String(arv));
         q.set('discount', String(discount));
+
+        // Add neighborhood filtering if available
+        if(usingNeighborhood) {
+          q.set('neighborhood', neighborhood);
+        }
 
         const res = await fetch(LIST_URL + '?' + q.toString());
         const data = await res.json();
@@ -372,8 +381,17 @@
         }
 
         const c = data.counts || {};
-        var head = '<div style="margin-bottom:8px;color:#475569">'
-          + 'Supply: <strong>'+(c.active_total||0)+'</strong> active · '
+        const filteredByNeighborhood = data.filtered_by_neighborhood || false;
+        const neighborhoodName = data.neighborhood || '';
+        const requestedNeighborhood = data.neighborhood ? true : false;
+
+        var head = '<div style="margin-bottom:8px;color:#475569">';
+        if (filteredByNeighborhood) {
+          head += '<span style="color:#16a34a;font-weight:600;">✓ Filtered to ' + neighborhoodName + '</span><br/>';
+        } else if (requestedNeighborhood) {
+          head += '<span style="color:#f59e0b;font-weight:600;">⚠️ Showing all ZIP listings (neighborhood filter unavailable)</span><br/>';
+        }
+        head += 'Supply: <strong>'+(c.active_total||0)+'</strong> active · '
           + '≤ budget: <strong>'+(c.under_budget||0)+'</strong> · '
           + 'in target band: <strong>'+(c.in_target_band||0)+'</strong>'
           + '</div>';
@@ -561,13 +579,6 @@
           whySection = detailsBlock('💡 Why This Area', '<ul class="bullets">'+list+'</ul>');
         }
 
-        const members = (grouped && item.member_tracts && item.member_tracts.length)
-          ? detailsBlock('🧩 Included census tracts',
-              item.member_tracts.slice(0,12).map(function(m){ return m.tract_id; }).join(', ')
-              + (item.member_tracts.length>12 ? '…' : '')
-            )
-          : '';
-
         // Listings block (lazy)
         const listId = 'list-'+idx;
         const listingsDetails = zip
@@ -580,7 +591,8 @@
           : '';
 
         html += '<div class="tract-card"'
-          + (zip ? (' data-zip="'+zip+'" data-listid="'+listId+'" data-arv="'+(item.median_home_value || '')+'"') : '')
+          + (zip ? (' data-zip="'+zip+'" data-listid="'+listId+'" data-arv="'+(item.median_home_value || '')+'"'
+                    + ' data-neighborhood="'+(item.neighborhood || '')+'"') : '')
           + '>'
           + '<div class="score-badge '+scoreClass+'"><div>'+score+'</div><div class="score-label">'+scoreLabel+'</div></div>'
           + '<div class="tract-title">'+title+'</div>'
@@ -589,7 +601,6 @@
           + '<div class="tract-info">'+baseRows+'</div>'
           + flipCalc
           + whySection
-          + members
           + listingsDetails
           + '</div>';
       });
@@ -604,10 +615,11 @@
         const zip = card.getAttribute('data-zip');
         const listId = card.getAttribute('data-listid');
         const arv = Number(card.getAttribute('data-arv') || 0);
+        const neighborhood = card.getAttribute('data-neighborhood');
         det.addEventListener('toggle', function(){
           if(det.open && zip && listId && det.querySelector('#'+listId)){
             const maxPrice = Number(document.getElementById('maxPrice').value || 0);
-            loadListingsOnce(zip, listId, maxPrice, arv, 0.77);
+            loadListingsOnce(zip, listId, maxPrice, arv, 0.77, neighborhood);
           }
         });
       });

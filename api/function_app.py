@@ -20,6 +20,7 @@ RAPIDAPI_TEST_URL = os.environ.get(
     "RAPIDAPI_TEST_URL",
     "https://realty-in-us.p.rapidapi.com/properties/v3/list"
 )
+RAPIDAPI_AUTOCOMPLETE_URL = "https://realty-in-us.p.rapidapi.com/locations/v2/auto-complete"
 
 # School ratings by neighborhood/city (1-10 scale)
 # Based on district performance, test scores, and school quality metrics
@@ -1178,9 +1179,97 @@ def neighborhood_label(county_name: str, tract: str) -> str:
 
     return f"{county_name} County"
 
+# --- Location ID cache ---
+_location_id_cache = {}  # { "neighborhood_city": {"ts": ISO_UTC, "location_data": {...}} }
+LOCATION_ID_CACHE_DAYS = 30  # Location IDs don't change
+
+def resolve_neighborhood_to_location_id(neighborhood: str, city: str, state_code: str) -> Optional[dict]:
+    """
+    Resolve a neighborhood name to a location ID using the autocomplete endpoint.
+    Returns dict with 'area_type', 'slug_id', 'geo_id' if found.
+    """
+    cache_key = f"{neighborhood}_{city}_{state_code}".lower()
+
+    # Check cache
+    if cache_key in _location_id_cache:
+        entry = _location_id_cache[cache_key]
+        try:
+            ts = datetime.fromisoformat(entry["ts"])
+            if datetime.utcnow() - ts < timedelta(days=LOCATION_ID_CACHE_DAYS):
+                return entry.get("location_data")
+        except Exception:
+            pass
+
+    # Call autocomplete API
+    search_query = f"{neighborhood} {city}"
+    headers = {
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": RAPIDAPI_HOST,
+    }
+
+    try:
+        logging.info(f"Resolving location: '{search_query}'")
+        r = requests.get(
+            RAPIDAPI_AUTOCOMPLETE_URL,
+            params={"input": search_query, "limit": "10"},
+            headers=headers,
+            timeout=REQUEST_TIMEOUT
+        )
+        r.raise_for_status()
+        data = r.json()
+
+<<<<<<< HEAD
+        logging.info(f"Autocomplete API response type: {type(data)}")
+        logging.info(f"Autocomplete API response: {data}")
+
+        # Look for neighborhood or city match
+        autocomplete_results = data.get("autocomplete", []) if data else []
+        for result in autocomplete_results:
+=======
+        # Log raw response for debugging
+        autocomplete_results = data.get("autocomplete", [])
+        logging.info(f"Autocomplete returned {len(autocomplete_results)} results")
+
+        # Look for neighborhood or city match
+        for idx, result in enumerate(autocomplete_results):
+>>>>>>> 5c0d606f117ef6da03ca0b90323ee0e71a0fee37
+            result_area_type = result.get("area_type", "")
+            result_city = result.get("city", "").lower()
+            result_state = result.get("state_code", "").lower()
+            result_name = result.get("_id", "")
+
+            logging.info(f"  [{idx}] {result_name} - type: {result_area_type}, city: {result_city}, state: {result_state}")
+
+            # Prefer neighborhood type, but accept city too
+            if result_state == state_code.lower():
+                if result_area_type == "neighborhood" or result_area_type == "city":
+                    location_data = {
+                        "area_type": result_area_type,
+                        "slug_id": result.get("slug_id"),
+                        "geo_id": result.get("geo_id"),
+                        "city": result.get("city"),
+                        "state_code": result.get("state_code")
+                    }
+                    logging.info(f"✓ Matched location: {location_data}")
+
+                    # Cache it
+                    _location_id_cache[cache_key] = {
+                        "ts": datetime.utcnow().isoformat(),
+                        "location_data": location_data
+                    }
+                    return location_data
+
+        logging.warning(f"✗ No matching location found for '{search_query}' in {len(autocomplete_results)} results")
+        return None
+
+    except Exception as e:
+        logging.error(f"✗ Exception resolving location '{search_query}': {e}")
+        return None
+
 # --- Listings cache (per ZIP) ---
 _listings_cache = {}  # { zip: {"ts": ISO_UTC, "data": {...}} }
 LISTINGS_CACHE_HOURS = 6
+LISTINGS_CACHE_VERSION = "v3"  # Increment to invalidate all cached listings
 
 def _cache_get_listings(zip_code: str):
     entry = _listings_cache.get(zip_code)
@@ -1251,6 +1340,114 @@ def fetch_census_data_with_retry(county_name: str, county_fips: str, max_retries
             else:
                 return None
     return None
+
+# === CENSUS TRACT BOUNDARIES ===
+
+# Cache for tract boundary polygons
+_tract_boundaries_cache = {}  # { tract_geoid: {"ts": ISO_UTC, "polygon": [[[lon, lat], ...]]} }
+TRACT_BOUNDARY_CACHE_DAYS = 30  # Boundaries don't change often
+
+def _cache_get_tract_boundary(tract_geoid: str):
+    """Get cached tract boundary polygon."""
+    entry = _tract_boundaries_cache.get(tract_geoid)
+    if not entry:
+        return None
+    try:
+        ts = datetime.fromisoformat(entry["ts"])
+        if datetime.utcnow() - ts > timedelta(days=TRACT_BOUNDARY_CACHE_DAYS):
+            del _tract_boundaries_cache[tract_geoid]
+            return None
+    except Exception:
+        del _tract_boundaries_cache[tract_geoid]
+        return None
+    return entry["polygon"]
+
+def _cache_set_tract_boundary(tract_geoid: str, polygon: List) -> None:
+    """Cache tract boundary polygon."""
+    _tract_boundaries_cache[tract_geoid] = {
+        "ts": datetime.utcnow().isoformat(),
+        "polygon": polygon
+    }
+
+def fetch_tract_boundary(state_fips: str, county_fips: str, tract_code: str) -> Optional[List]:
+    """
+    Fetch census tract boundary polygon from Census TIGER API.
+    Returns polygon as list of coordinate rings: [[[lon, lat], [lon, lat], ...]]
+    """
+    # Build full GEOID: state(2) + county(3) + tract(6)
+    geoid = f"{state_fips}{county_fips}{tract_code}"
+
+    # Check cache first
+    cached = _cache_get_tract_boundary(geoid)
+    if cached is not None:
+        return cached
+
+    # Fetch from TIGER API
+    tiger_url = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2023/MapServer/8/query"
+    params = {
+        "where": f"GEOID='{geoid}'",
+        "outFields": "*",
+        "returnGeometry": "true",
+        "f": "json"
+    }
+
+    try:
+        r = requests.get(tiger_url, params=params, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
+
+        features = data.get("features", [])
+        if not features:
+            logging.warning(f"No boundary found for tract {geoid}")
+            return None
+
+        # Extract polygon rings from first feature
+        geometry = features[0].get("geometry", {})
+        rings = geometry.get("rings", [])
+
+        if not rings:
+            logging.warning(f"No rings in geometry for tract {geoid}")
+            return None
+
+        # Cache and return
+        _cache_set_tract_boundary(geoid, rings)
+        return rings
+
+    except Exception as e:
+        logging.warning(f"Failed to fetch boundary for tract {geoid}: {e}")
+        return None
+
+def point_in_polygon(point_lon: float, point_lat: float, polygon_rings: List) -> bool:
+    """
+    Check if a point is inside a polygon using ray casting algorithm.
+    polygon_rings: list of rings, each ring is [[lon, lat], [lon, lat], ...]
+    """
+    if not polygon_rings:
+        return False
+
+    # Use first ring (exterior boundary)
+    polygon = polygon_rings[0]
+
+    # Ray casting algorithm
+    inside = False
+    n = len(polygon)
+
+    p1_lon, p1_lat = polygon[0]
+
+    for i in range(1, n + 1):
+        p2_lon, p2_lat = polygon[i % n]
+
+        if point_lat > min(p1_lat, p2_lat):
+            if point_lat <= max(p1_lat, p2_lat):
+                if point_lon <= max(p1_lon, p2_lon):
+                    if p1_lat != p2_lat:
+                        x_intersection = (point_lat - p1_lat) * (p2_lon - p1_lon) / (p2_lat - p1_lat) + p1_lon
+                    if p1_lon == p2_lon or point_lon <= x_intersection:
+                        inside = not inside
+
+        p1_lon, p1_lat = p2_lon, p2_lat
+
+    return inside
 
 # === MARKET DATA (optional) ===
 
@@ -1507,6 +1704,9 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "score": r.get("score")
     } for r in rows]
 
+    # Select primary tract for boundary filtering (highest score)
+    primary_tract = max(rows, key=lambda r: r.get("score", 0)) if rows else {}
+
     return {
         "median_home_value": round(med_home_val, 1) if med_home_val is not None else None,
         "median_income": round(med_income, 1) if med_income is not None else None,
@@ -1521,6 +1721,9 @@ def aggregate_group(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "warnings": warnings,
         "member_tracts": members,
         "tracts_count": len(rows),
+        "primary_tract_code": primary_tract.get("tract"),
+        "primary_state_fips": primary_tract.get("state"),
+        "primary_county_fips": primary_tract.get("county"),
     }
 
 # === HTTP ===
@@ -1583,9 +1786,9 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
             do_group = True
 
         try:
-            rehab_budget = int(req.params.get("rehab_budget", "40000"))
+            rehab_budget = int(req.params.get("rehab_budget", "15000"))
         except Exception:
-            rehab_budget = 40000
+            rehab_budget = 15000
 
         max_market_lookups = min(int(req.params.get("max_market_lookups", MAX_MARKET_LOOKUPS_DEFAULT)), 50)
 
@@ -1826,9 +2029,15 @@ def analyze_neighborhoods(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="listings", methods=["GET"])
 def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Returns active listings for a ZIP using the same RapidAPI provider you already use.
+    Returns active listings for a location.
     Query params:
-      zip          (required)
+      zip          (required) - ZIP code to search
+      neighborhood (optional) - Neighborhood name for more specific filtering
+      city         (optional) - City name (defaults to Indianapolis for IN zips)
+      state        (optional) - State code (defaults to IN for Indianapolis zips)
+      tract        (optional) - 6-digit census tract code for boundary filtering (legacy)
+      state_fips   (optional) - 2-digit state FIPS (default: 18 for Indiana)
+      county_fips  (optional) - 3-digit county FIPS (default: 097 for Marion)
       limit        default 12
       price_max    optional: user's max purchase price (for "under budget" count)
       arv          optional: ARV/median value, used with 'discount' to count the target band
@@ -1846,6 +2055,26 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             json.dumps({"status": "error", "message": "zip is required"}),
             status_code=400, mimetype="application/json", headers=CORS_HEADERS
         )
+
+    # Get neighborhood/city parameters
+    neighborhood = (req.params.get("neighborhood") or "").strip()
+    city = (req.params.get("city") or "Indianapolis").strip()  # Default to Indianapolis
+    state_code = (req.params.get("state") or "IN").strip()  # Default to Indiana
+
+    # Legacy tract boundary filtering parameters (still supported as fallback)
+    tract_code = (req.params.get("tract") or "").strip()
+    state_fips = (req.params.get("state_fips") or "18").strip()  # Default: Indiana
+    county_fips = (req.params.get("county_fips") or "097").strip()  # Default: Marion County
+
+    # Fetch tract boundary if tract filtering requested
+    tract_boundary = None
+    if tract_code:
+        logging.info(f"Tract filtering requested: state={state_fips}, county={county_fips}, tract={tract_code}")
+        tract_boundary = fetch_tract_boundary(state_fips, county_fips, tract_code)
+        if tract_boundary:
+            logging.info(f"Successfully fetched boundary with {len(tract_boundary)} rings, first ring has {len(tract_boundary[0])} points")
+        else:
+            logging.warning(f"Could not fetch boundary for tract {tract_code}, proceeding without filtering")
 
     try:
         limit = max(1, min(int(req.params.get("limit", "12")), 50))
@@ -1868,19 +2097,28 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         discount = 0.77
 
+    # Cache key based on ZIP code (neighborhood filtering not supported)
+    if tract_code:
+        cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}:{tract_code}"
+    else:
+        cache_key = f"{LISTINGS_CACHE_VERSION}:{zip_code}"
+
     # Cache hit?
-    cached = _cache_get_listings(zip_code)
+    cached = _cache_get_listings(cache_key)
     if cached is not None:
         data = cached
     else:
-        # Call RapidAPI provider (same as DOM provider; different payload intent)
+        # Call RapidAPI provider
+        # Build payload - prefer location ID if we have it, otherwise use postal_code
         payload = {
-            "limit": max(25, limit),   # fetch a few more so counts are meaningful
+            "limit": max(25, limit),
             "offset": 0,
-            "postal_code": zip_code,
             "status": ["for_sale", "under_contract"],
             "sort": {"direction": "desc", "field": "list_date"},
         }
+
+        # Use postal_code for filtering (neighborhood filtering not supported)
+        payload["postal_code"] = zip_code
         headers = {
             "Content-Type": "application/json",
             "x-rapidapi-key": RAPIDAPI_KEY,
@@ -1905,6 +2143,17 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
             else:
                 r.raise_for_status()
                 raw = r.json()
+
+                if raw is None:
+                    data = {"results": [], "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}}
+                    _cache_set_listings(cache_key, data)
+                    return func.HttpResponse(json.dumps({
+                        "status": "error",
+                        "message": "API returned empty response",
+                        "results": [],
+                        "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}
+                    }), mimetype="application/json", headers=CORS_HEADERS)
+
                 props = (raw or {}).get("data", {}).get("home_search", {}).get("results", []) or []
 
                 items = []
@@ -1914,6 +2163,10 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                 if arv and discount:
                     target_price = int(arv * discount)
 
+                total_props = len(props)
+                logging.info(f"API returned {total_props} properties for ZIP {zip_code}")
+
+                # Process properties
                 for p in props:
                     # Normalize a handful of fields (many feeds use similar names)
                     price = (
@@ -1925,7 +2178,7 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
 
                     addr = (p.get("location") or {}).get("address", {}) or {}
                     line = addr.get("line") or ""
-                    city = addr.get("city") or ""
+                    city_name = addr.get("city") or ""
                     state = addr.get("state_code") or addr.get("state") or ""
                     postal = addr.get("postal_code") or zip_code
 
@@ -1943,7 +2196,7 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
 
                     items.append({
                         "price": int(price),
-                        "address": ", ".join([s for s in [line, city, state] if s]),
+                        "address": ", ".join([s for s in [line, city_name, state] if s]),
                         "zip": postal,
                         "beds": beds,
                         "baths": baths,
@@ -1957,6 +2210,27 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     if target_price and price <= target_price:
                         in_target += 1
 
+<<<<<<< HEAD
+=======
+                # Determine if filtering was actually applied by location ID (or if we fell back to ZIP)
+                filtering_applied = bool(location_id_data and (location_id_data.get("slug_id") or location_id_data.get("geo_id")))
+
+                # Log filtering results
+                logging.info(f"Filtering results for ZIP {zip_code}:")
+                logging.info(f"  Total properties returned: {total_props}")
+                if neighborhood:
+                    logging.info(f"  Neighborhood requested: '{neighborhood}'")
+                    if filtering_applied and location_id_data:
+                        logging.info(f"  Location ID filtering applied via API")
+                        if location_id_data.get("slug_id"):
+                            logging.info(f"  Used slug_id: {location_id_data['slug_id']}")
+                        elif location_id_data.get("geo_id"):
+                            logging.info(f"  Used geo_id: {location_id_data['geo_id']}")
+                    else:
+                        logging.info(f"  No location ID found - fell back to ZIP {zip_code}")
+                logging.info(f"  Final items count: {len(items)}")
+
+>>>>>>> 5c0d606f117ef6da03ca0b90323ee0e71a0fee37
                 data = {
                     "results": sorted(items, key=lambda x: x["price"])[:limit],
                     "counts": {
@@ -1966,16 +2240,16 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
                     }
                 }
 
-            _cache_set_listings(zip_code, data)
+            _cache_set_listings(cache_key, data)
 
         except Exception as e:
-            logging.warning("Listings fetch failed for %s: %s", zip_code, e)
+            logging.warning("Listings fetch failed for %s: %s", cache_key, e)
             data = {"results": [], "counts": {"active_total": 0, "under_budget": 0, "in_target_band": 0}}
 
     return func.HttpResponse(json.dumps({
         "status": "success",
         "zip": zip_code,
-        "discount_used": discount,
+        "neighborhood": neighborhood if neighborhood else None,
         "counts": data.get("counts", {}),
         "results": data.get("results", [])
     }, indent=2), mimetype="application/json", headers=CORS_HEADERS)
