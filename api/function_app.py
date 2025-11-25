@@ -2052,6 +2052,9 @@ def listings_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     city = (req.params.get("city") or "Indianapolis").strip()  # Default to Indianapolis
     state_code = (req.params.get("state") or "IN").strip()  # Default to Indiana
 
+    # Initialize location_id_data for neighborhood filtering (currently not implemented)
+    location_id_data = None
+
     # Legacy tract boundary filtering parameters (still supported as fallback)
     tract_code = (req.params.get("tract") or "").strip()
     state_fips = (req.params.get("state_fips") or "18").strip()  # Default: Indiana
